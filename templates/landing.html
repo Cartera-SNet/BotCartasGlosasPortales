@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Salud Net — Descargador de Cartas Glosa</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<style>
+  :root {
+    --bg-body: #0b1220;
+    --bg-card: #ffffff;
+    --brand-teal: #00d9c0;
+    --brand-navy: #015a7e;
+    --brand-lime: #93c026;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --border: #eef0f5;
+    --success: #10b981;
+    --error: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    background: var(--bg-body);
+    background-image:
+      radial-gradient(ellipse 900px 600px at 8% -5%, rgba(0, 217, 192, 0.35), transparent 60%),
+      radial-gradient(ellipse 800px 700px at 100% 0%, rgba(1, 90, 126, 0.55), transparent 55%),
+      radial-gradient(ellipse 700px 600px at 90% 90%, rgba(147, 192, 38, 0.18), transparent 55%),
+      radial-gradient(ellipse 900px 800px at 0% 100%, rgba(164, 30, 53, 0.16), transparent 55%),
+      linear-gradient(180deg, #0b1220 0%, #0e1830 100%);
+    background-attachment: fixed;
+    overflow-x: hidden;
+  }
+
+  header { padding: 56px 24px 10px; text-align: center; position: relative; z-index: 1; }
+  .header-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: rgba(255,255,255,0.08); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.14);
+    padding: 6px 14px; border-radius: 20px; font-size: 0.7rem; font-weight: 600;
+    color: #cbd5e1; margin-bottom: 20px;
+  }
+  .header-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-teal); box-shadow: 0 0 8px var(--brand-teal); }
+
+  header h1 {
+    font-size: 2.4rem; font-weight: 900; letter-spacing: -0.03em;
+    background: linear-gradient(90deg, #ffffff 0%, #b9f3ea 60%, var(--brand-teal) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header p { font-size: 0.92rem; color: #94a3b8; margin-top: 10px; }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 24px 70px; position: relative; z-index: 1; }
+
+  .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 26px; perspective: 1000px; }
+
+  .card {
+    --accent: #000;
+    flex: 1 1 235px; max-width: 252px;
+    background: var(--bg-card); border-radius: 20px; border: 1px solid var(--border);
+    text-decoration: none; color: inherit; overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: transform 0.28s cubic-bezier(.2,.8,.2,1), box-shadow 0.28s ease, border-color 0.28s ease;
+    position: relative;
+    box-shadow: 0 8px 20px -10px rgba(0,0,0,0.35);
+  }
+  .card:hover {
+    transform: translateY(-8px) scale(1.035) rotate(-0.4deg);
+    box-shadow: 0 26px 46px -14px var(--sombra, rgba(0,0,0,0.4)), 0 0 0 1.5px var(--accent);
+    border-color: transparent;
+  }
+  .card:hover .logo-wrap { transform: scale(1.08) rotate(2deg); box-shadow: 0 0 0 6px var(--tinte, transparent); }
+  .card:hover .abrir i { transform: translate(3px, -3px); }
+
+  .card-accent { height: 6px; width: 100%; }
+
+  .card-body { padding: 28px 20px 22px; display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 1; }
+
+  .status-pill {
+    position: absolute; top: 14px; right: 14px;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 3px 8px; border-radius: 20px;
+    background: #f1f5f9; color: var(--text-muted);
+  }
+  .status-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .status-pill.running { background: #e6f7f5; color: #059669; }
+  .status-pill.running .dot { animation: pulse 1.1s infinite; }
+  .status-pill.done { background: #ecfdf5; color: #059669; }
+  .status-pill.error { background: #fef2f2; color: #dc2626; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  .logo-wrap {
+    width: 78px; height: 78px; border-radius: 22px;
+    background: #fbfbfe; border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 4px;
+    transition: transform 0.28s cubic-bezier(.2,.8,.2,1), box-shadow 0.28s ease;
+  }
+  .logo-wrap img { width: 62%; height: 62%; object-fit: contain; }
+
+  .card .nombre { font-size: 1.02rem; font-weight: 700; margin-top: 4px; }
+  .card .empresa { font-size: 0.72rem; color: var(--text-secondary); text-align: center; }
+  .card .mini-stats { font-size: 0.64rem; color: var(--text-muted); min-height: 14px; }
+
+  .procesos-list { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 2px; }
+  .proceso-chip {
+    font-size: 0.62rem; font-weight: 600; color: #059669; background: #e6f7f5;
+    border-radius: 8px; padding: 4px 8px; text-align: left;
+    display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .proceso-chip .dot { width: 5px; height: 5px; min-width: 5px; border-radius: 50%; background: currentColor; animation: pulse 1.1s infinite; }
+
+  .card .abrir {
+    margin-top: auto; width: 100%; text-align: center;
+    font-size: 0.76rem; font-weight: 700;
+    padding: 11px 0; border-radius: 0 0 19px 19px;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .card .abrir i { transition: transform 0.2s ease; }
+
+  footer { text-align: center; padding: 10px 24px 36px; font-size: 0.7rem; color: #64748b; position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-badge"><span class="dot"></span> {{ bots|length }} aseguradoras conectadas</div>
+  <h1>Descargador de Cartas Glosa</h1>
+  <p>Escoge la aseguradora que desees para descargar los soportes</p>
+</header>
+
+<main>
+  <div class="grid">
+    {% for b in bots %}
+    <a class="card" href="{{ b.url }}" target="_blank" rel="noopener" data-status-url="{{ b.status_url }}"
+       style="--accent: {{ b.color }}; --sombra: {{ b.sombra }}; --tinte: {{ b.tinte }};">
+      <div class="card-accent" style="background: {{ b.color }};"></div>
+      <div class="status-pill idle" data-role="pill">
+        <span class="dot"></span><span data-role="pill-text">—</span>
+      </div>
+      <div class="card-body">
+        <div class="logo-wrap"><img src="/static/{{ b.logo }}" alt="{{ b.nombre }}"></div>
+        <div class="nombre">{{ b.nombre }}</div>
+        <div class="empresa">{{ b.empresa }}</div>
+        <div class="mini-stats" data-role="mini-stats"></div>
+        <div class="procesos-list" data-role="procesos-list"></div>
+      </div>
+      <div class="abrir" style="background: {{ b.color }}; color: {{ b.texto_boton or 'white' }};">Abrir <i class="fas fa-arrow-up-right-from-square"></i></div>
+    </a>
+    {% endfor %}
+  </div>
+</main>
+
+<footer>Salud Net — Automatización de cartas glosa</footer>
+
+<script>
+// Catálogo de nombres cortos de IPS (para mostrar en las tarjetas del panel).
+// Cada clave puede escribirse con espacios o guiones bajos indistintamente.
+// El primer alias de cada lista es el nombre corto que se muestra.
+const IPS_CATALOGO = {
+  "CENTRO DE DIAGNOSTICO E IMAGEN BAHIA": ["CDI BAHIA", "CENTRO DE DIAGNOSTICO E IMAGENES BAHIA", "DIAGNOSTICO BAHIA"],
+  "CENTRO MEDICO SERVISALUD INTEGRAL IPS": ["SERVISALUD", "SERVISALUD JAMUNDI", "CENTRO MEDICO SERVISALUD INTEGRAL IPS - JAMUNDI", "CENTRO MEDICO SERVISALUD INTEGRAL IPS SAS"],
+  "CENTRO MEDICO Y DE REHABILITACION BAHIA": ["CMR BAHIA", "CMYR BAHIA", "CENTRO MEDICO BAHIA"],
+  "CENTRO MEDICO Y DE REHABILITACION BARU": ["CMR BARU", "CMYR BARU", "CENTRO MEDICO BARU"],
+  "CENTRO MEDICO Y REHABILITACION VALLE SALUD": ["CRM VALLE SALUD", "CMR VALLE SALUD", "CENTRO MEDICO VALLE", "CENTRO MEDICO Y DE REHABILITACION VALLE SALUD", "CMR VALLESALUD"],
+  "CLINICA VALLE SALUD SAN FERNANDO": ["VALLE SALUD SAN FERNANDO", "SAN FERNANDO"],
+  "FUNDACION CAMPBELL": ["CAMPBELL"],
+  "FUNDACION MARIA REINA": ["MARIA REINA", "FUNDACION MARIA REINA SUCRE SINCELEJO"],
+  "FUNDACION MEDICA CAMPBELL": ["FMC", "MEDICA CAMPBELL"],
+  "INVERSIONES AZALUD - CLINICA BAHIA": ["AZALUD", "CLINICA BAHIA", "BAHIA - AZALUD", "BAHIA AZALUD", "INVERSIONES AZALUD", "INVERSIONES AZALUD CLINICA BAHIA"],
+  "INVERSIONES MEDICAS BARU": ["BARU", "CLINICA BARU"],
+  "INVERSIONES MEDICAS VALLE SALUD": ["VALLE SALUD", "VALLESALUD", "INVERSIONES MEDICAS VALLESALUD", "VALLE SALUD NORTE"],
+  "MOVID IPS": ["MOVID", "MOVID IPS SAS"],
+  "ODONTOTRANS": ["ODONTOTRANS"],
+  "RED DE URGENCIAS DE LA COSTA LTDA": ["RUC DE LA COSTA", "RUC", "RED DE URGENCIA DE LA COSTA LTDA"],
+  "RED DE URGENCIAS DE LA COSTA PACIFICA": ["RUC PACIFICA"],
+  "RUC MAGDALENA": ["RUC MAGDALENA", "RED DE URGENCIAS DEL MAGDALENA"],
+  "TECNOLOGIA DIAGNOSTICA DEL VALLE": ["TD VALLE", "TDV"],
+  "UNIDAD MEDICA DE TRAUMA DEL VALLE": ["TRAUMA DEL VALLE", "CVO UNIDAD MEDICA DE TRAUMA DEL VALLE", "UNIDAD MEDICA DE TRAUMA VALLE SALUD"],
+  "URGETRAUMA SAN FERNANDO": ["URGETRAUMA"],
+  "CORDIALIDAD": ["CORDIALIDAD", "CORDIALIDAD IPS", "CLINICA CORDIALIDAD"],
+};
+
+// Construye un mapa plano: tanto la clave principal como cada alias apuntan
+// al nombre corto (primer alias) — así calza sin importar cuál de las
+// variantes conocidas haya quedado guardada como ips_nombre.
+const IPS_NOMBRE_CORTO = {};
+for (const [clave, aliases] of Object.entries(IPS_CATALOGO)) {
+  const corto = aliases[0];
+  const variantes = [clave, ...aliases];
+  for (const v of variantes) {
+    IPS_NOMBRE_CORTO[v.trim().toUpperCase()] = corto;
+  }
+}
+
+function nombreCortoIPS(nombreCompleto) {
+  if (!nombreCompleto) return nombreCompleto;
+  const normalizado = nombreCompleto.replace(/_/g, ' ').trim().toUpperCase();
+  return IPS_NOMBRE_CORTO[normalizado] || nombreCompleto;
+}
+
+async function actualizarEstados() {
+  const tarjetas = document.querySelectorAll('.card[data-status-url]');
+  for (const card of tarjetas) {
+    const url = card.dataset.statusUrl;
+    if (!url) continue;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const s = await resp.json();
+      const pill = card.querySelector('[data-role="pill"]');
+      const pillText = card.querySelector('[data-role="pill-text"]');
+      const mini = card.querySelector('[data-role="mini-stats"]');
+      const procesosList = card.querySelector('[data-role="procesos-list"]');
+
+      pill.classList.remove('idle', 'running', 'done', 'error');
+      const procesos = Array.isArray(s.procesos) ? s.procesos : null;
+
+      if (s.running) {
+        pill.classList.add('running');
+        pillText.textContent = (procesos && procesos.length > 1)
+          ? `Procesando (${procesos.length})`
+          : 'Procesando';
+      } else if (s.error) {
+        pill.classList.add('error');
+        pillText.textContent = 'Error';
+      } else if (s.finished) {
+        pill.classList.add('done');
+        pillText.textContent = 'Completado';
+      } else {
+        pill.classList.add('idle');
+        pillText.textContent = 'En espera';
+      }
+
+      if (s.stats && s.stats.total > 0) {
+        mini.textContent = `${s.stats.descargadas}/${s.stats.total} descargadas`;
+      } else {
+        mini.textContent = '';
+      }
+
+      if (procesosList) {
+        procesosList.innerHTML = '';
+        if (procesos && procesos.length > 0) {
+          for (const p of procesos) {
+            const chip = document.createElement('div');
+            chip.className = 'proceso-chip';
+            const total = p.stats && p.stats.total ? p.stats.total : 0;
+            const desc = p.stats && p.stats.descargadas ? p.stats.descargadas : 0;
+            const nombreCorto = nombreCortoIPS(p.ips);
+            chip.innerHTML = `<span class="dot"></span><span>${nombreCorto}${total > 0 ? ` · ${desc}/${total}` : ''}</span>`;
+            procesosList.appendChild(chip);
+          }
+        }
+      }
+    } catch (e) { /* silencioso: si un bot no responde, no rompe el panel */ }
+  }
+}
+actualizarEstados();
+setInterval(actualizarEstados, 4000);
+</script>
+
+</body>
+</html>

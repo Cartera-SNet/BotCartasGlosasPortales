@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIS VIDA — {{ cfg.titulo }}</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<style>
+  :root {
+    --bg-body: #f5f7fc;
+    --bg-card: #ffffff;
+    --accent: {{ cfg.accent }};
+    --accent-light: {{ cfg.accent }}1a;
+    --accent-hover: {{ cfg.accent_hover }};
+    --accent-blue: #10a5bd;
+    --accent-blue-light: #e3f6f9;
+    --accent-blue-hover: #0c8399;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --error: #ef4444;
+    --warning: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; }
+
+  header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 50; }
+  .header-icon { width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--accent-light); overflow: hidden; }
+  .header-icon img { width: 100%; height: 100%; object-fit: contain; }
+  header h1 { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+  header p { font-size: 0.7rem; color: var(--text-secondary); }
+
+  .volver-panel { margin-left: auto; text-decoration: none; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; transition: all 0.15s; }
+  .volver-panel:hover { background: var(--accent-light); color: var(--accent); }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+
+  .card { background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden; }
+  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.75rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px; background: #f8fafc; }
+  .card-header .icon { width: 24px; height: 24px; background: var(--accent-light); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--accent); }
+  .card-body { padding: 10px 16px; }
+
+  .form-group { margin-bottom: 8px; }
+  label { display: block; font-size: 0.65rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .input-field { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.8rem; color: var(--text-primary); background: var(--bg-card); transition: all 0.2s; outline: none; }
+  .input-field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+  .input-field::placeholder { color: #94a3b8; }
+
+  .path-display { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.65rem; color: var(--text-secondary); margin-top: 5px; font-family: monospace; }
+
+  .upload-area { background: #f8fafc; border: 1.5px dashed var(--border); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.2s; }
+  .upload-area:hover { border-color: var(--accent); background: var(--accent-light); }
+  .upload-area input[type="file"] { display: none; }
+  .upload-label { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+  .upload-label:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+  .btn-upload { margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-hover)); color: white; border: none; border-radius: 7px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-upload:hover { transform: translateY(-1px); }
+
+  .alert { padding: 8px 12px; border-radius: 8px; font-size: 0.7rem; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; border: 1px solid; }
+  .alert.info { background: var(--accent-blue-light); color: var(--accent-blue-hover); border-color: rgba(16, 165, 189, 0.3); }
+
+  .btn-primary { width: 100%; padding: 11px 18px; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: white; border: none; border-radius: 9px; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 3px 10px var(--accent-light); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .button-group { display: flex; gap: 6px; margin-top: 10px; }
+  .btn-secondary { flex: 1; padding: 9px 10px; border: none; border-radius: 8px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .btn-stop { background: linear-gradient(135deg, #c0392b, #922b21); color: white; box-shadow: 0 2px 6px rgba(192, 57, 43, 0.2); }
+  .btn-stop:hover { transform: translateY(-1px); }
+  .btn-reset { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-reset:hover { background: #e2e8f0; }
+  .btn-progreso { background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-hover)); color: white; box-shadow: 0 2px 6px rgba(16, 165, 189, 0.2); }
+  .btn-progreso:hover { transform: translateY(-1px); }
+
+  .stats-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .stat-box { background: #f8fafc; border-radius: 8px; padding: 10px 8px; text-align: center; border: 1px solid var(--border); }
+  .stat-box .val { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+  .stat-box.total .val { color: var(--accent-blue); }
+  .stat-box.ok .val { color: var(--success); }
+  .stat-box.error .val { color: var(--error); }
+  .stat-box .lbl { font-size: 0.6rem; color: var(--text-secondary); margin-top: 3px; text-transform: uppercase; font-weight: 600; }
+
+  .progress-wrap { margin-bottom: 12px; }
+  .progress-bar-bg { height: 6px; background: #f1f5f9; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--success), #34d399); border-radius: 6px; transition: width 0.4s ease; width: 0%; box-shadow: 0 0 6px rgba(16, 185, 129, 0.25); }
+  .progress-label { font-size: 0.65rem; color: var(--text-secondary); margin-top: 5px; text-align: center; font-weight: 500; }
+
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: 600; margin-bottom: 12px; }
+  .status-badge.idle { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); }
+  .status-badge.running { background: var(--accent-blue-light); color: var(--accent-blue-hover); border: 1px solid rgba(16, 165, 189, 0.3); }
+  .status-badge.done { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+  .status-badge.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+  .spinner { width: 8px; height: 8px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .log-console { background: #0f172a; border-radius: 8px; padding: 10px 12px; height: 200px; overflow-y: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.68rem; line-height: 1.5; color: #94a3b8; }
+  .log-console::-webkit-scrollbar { width: 4px; }
+  .log-console::-webkit-scrollbar-track { background: #1e293b; }
+  .log-console::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+  .log-line { display: flex; gap: 7px; padding: 1px 0; }
+  .log-ts { color: #475569; flex-shrink: 0; font-size: 0.6rem; }
+  .log-msg { flex: 1; word-break: break-word; }
+  .log-line.info .log-msg { color: #94a3b8; }
+  .log-line.success .log-msg { color: #34d399; }
+  .log-line.error .log-msg { color: #f87171; }
+  .log-line.warn .log-msg { color: #fbbf24; }
+
+  .file-list { max-height: 130px; overflow-y: auto; }
+  .file-list::-webkit-scrollbar { width: 3px; }
+  .file-list::-webkit-scrollbar-track { background: var(--bg-card); }
+  .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .file-item { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; font-size: 0.7rem; border-bottom: 1px solid var(--border); }
+  .file-item:last-child { border-bottom: none; }
+  .file-item:hover { background: #f8fafc; }
+  .file-item .icon { color: var(--accent); }
+  .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-item .size { color: var(--text-secondary); font-size: 0.6rem; }
+  .file-item a { color: var(--accent-blue); text-decoration: none; }
+  .file-empty { font-size: 0.7rem; color: var(--text-secondary); text-align: center; padding: 10px; }
+
+  .btn-clear { margin-left: auto; background: none; border: none; font-size: 0.65rem; color: var(--text-secondary); cursor: pointer; font-weight: 600; }
+  .btn-clear:hover { color: var(--accent-blue); }
+
+  .modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.5); align-items: center; justify-content: center; z-index: 100; }
+  .modal-content { background: var(--bg-card); border-radius: 12px; width: 420px; max-height: 70vh; display: flex; flex-direction: column; }
+  .modal-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-header h3 { font-size: 0.85rem; }
+  .modal-close { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-secondary); }
+  .modal-body { padding: 14px 16px; overflow-y: auto; font-size: 0.75rem; }
+  .factura-lista { list-style: none; }
+  .factura-lista li { padding: 4px 0; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 0.7rem; }
+  .modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+  .btn-modal { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.68rem; font-weight: 600; cursor: pointer; }
+  .btn-modal.green { background: var(--success); color: white; }
+  .btn-modal.gray { background: #f1f5f9; color: var(--text-secondary); }
+  .btn-modal.red { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-icon"><img src="/static/{{ cfg.logo }}" alt="{{ cfg.nombre }}"></div>
+  <div>
+    <h1>{{ cfg.titulo }}</h1>
+    <p>{{ cfg.subtitulo }}</p>
+  </div>
+  <a href="/" class="volver-panel"><i class="fas fa-arrow-left"></i> Panel principal</a>
+</header>
+
+<main>
+
+  <!-- Panel izquierdo: Configuración -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-cog"></i></span> Panel de Control
+      </div>
+      <div class="card-body">
+
+        <div class="form-group">
+          <label>Usuario (NIT)</label>
+          <input type="text" id="usuario" class="input-field" placeholder="Ej: 900267064" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="password" class="input-field" placeholder="Contraseña" autocomplete="current-password">
+        </div>
+
+        <div class="form-group">
+          <label>📎 Excel de facturas a liquidar</label>
+          <div class="upload-area">
+            <label for="uploadFile" class="upload-label">
+              <i class="fas fa-file-import"></i> Seleccionar archivo
+            </label>
+            <input type="file" id="uploadFile" accept=".csv,.xlsx,.xls">
+            <div id="uploadFileName" style="font-size:0.65rem; color:var(--text-secondary); margin-top:5px;"></div>
+            <button type="button" id="btnUpload" class="btn-upload">
+              <i class="fas fa-upload"></i> Cargar lista
+            </button>
+          </div>
+          <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
+          <p style="font-size:0.65rem;margin-top:6px;">
+            <a href="/plantilla" style="color:var(--accent-blue);">Descargar plantilla vacía</a>
+            (columna: Siniestro — ej: 17155/2026*3)
+          </p>
+        </div>
+
+        <div class="form-group" id="manualAddBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
+          <div id="manualAddToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+            <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0;">Agregar manualmente <span id="manualCountInline" style="color:var(--success);"></span></label>
+            <i id="manualAddChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+          </div>
+          <div id="manualAddContent" style="display:none; margin-top:6px;">
+            <textarea id="manualSiniestro" class="input-field" placeholder="Siniestro: 17155/2026*3" rows="1" style="font-size:0.75rem; resize:none; overflow-y:auto;"></textarea>
+            <button type="button" id="btnManualAdd" class="btn-primary" style="width:100%; margin-top:6px; font-size:0.75rem; padding:7px;">
+              <i class="fas fa-plus"></i> Agregar consecutivo
+            </button>
+            <div id="manualDetalle" style="display:none; margin-top:6px; max-height:120px; overflow-y:auto; border:1px solid var(--border); border-radius:6px;"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Carpeta de descarga (opcional)</label>
+          <input type="text" id="downloadPath" class="input-field" placeholder="Dejar vacío para usar por defecto">
+          <div class="path-display">📂 Se usará: downloads/{{ empresa }}/[IPS detectada según el NIT]/</div>
+        </div>
+
+        <div class="alert info">
+          <i class="fas fa-info-circle"></i>
+          <span>Genera: soportes en PDF, guardados por N° de factura</span>
+        </div>
+
+        <div class="form-group" id="identidadBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
+          <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0; display:block; margin-bottom:6px;">¿Quién eres?</label>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="chip-identidad" data-id="SaludNet" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Salud Net</button>
+            <button type="button" class="chip-identidad" data-id="Campbell" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Campbell</button>
+          </div>
+          <input type="text" id="identidadManual" placeholder="" autocomplete="off"
+                 style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+        </div>
+
+        <button class="btn-primary" id="btnStart" onclick="startJob()">
+          <i class="fas fa-rocket"></i> Iniciar descarga
+        </button>
+
+        <div class="button-group">
+          <button class="btn-secondary btn-stop" id="btnStop">
+            <i class="fas fa-stop"></i> Detener
+          </button>
+          <button class="btn-secondary btn-reset" id="btnReset">
+            <i class="fas fa-redo"></i> Reiniciar
+          </button>
+          <button class="btn-secondary btn-progreso" id="btnProgreso">
+            <i class="fas fa-list-check"></i> Progreso
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel derecho -->
+  <div style="display:flex; flex-direction:column; gap:14px;">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-chart-line"></i></span> Progreso
+      </div>
+      <div class="card-body">
+
+        <div id="statusBadge" class="status-badge idle">
+          <span id="statusDot" style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+          <span id="statusText">En espera</span>
+        </div>
+
+        <div class="stats-bar">
+          <div class="stat-box total"><div class="val" id="statTotal">0</div><div class="lbl">Cargadas</div></div>
+          <div class="stat-box ok"><div class="val" id="statOk">0</div><div class="lbl">Descargadas</div></div>
+          <div class="stat-box error"><div class="val" id="statError">0</div><div class="lbl">Errores</div></div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar"></div></div>
+          <div class="progress-label" id="progressLabel">0 de 0 facturas procesadas</div>
+        </div>
+
+        <div id="errorAlert" class="alert" style="display:none; background:#fee2e2; color:#991b1b; border-color:#fecaca;"></div>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-terminal"></i></span> Log de ejecución
+        <button onclick="clearLogs()" class="btn-clear">Limpiar</button>
+      </div>
+      <div class="card-body" style="padding:8px;">
+        <div class="log-console" id="logConsole">
+          <div class="log-line info"><span class="log-ts">--:--:--</span><span class="log-msg">Listo para iniciar. Carga el Excel de facturas y presiona "Iniciar descarga".</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-folder-open"></i></span> Archivos descargados
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="refreshFiles()" class="btn-clear" title="Actualizar">↻</button>
+          <button onclick="deleteAllFiles()" class="btn-clear" title="Borrar ZIPs" style="color:#e74c3c;font-size:14px;">🗑</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:8px;">
+        <div class="file-list" id="fileList">
+          <div class="file-empty">Sin archivos descargados aún.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div id="progresoModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>📋 Facturas completadas</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modalInfo" style="margin-bottom: 8px; color: var(--text-secondary);">Cargando...</p>
+      <ul id="modalLista" class="factura-lista"></ul>
+    </div>
+    <div class="modal-footer">
+      <button onclick="exportarProgresoExcel()" class="btn-modal green"><i class="fas fa-file-excel"></i> Exportar</button>
+      <button onclick="copiarLista()" class="btn-modal gray"><i class="fas fa-copy"></i> Copiar</button>
+      <button onclick="limpiarProgreso()" class="btn-modal red"><i class="fas fa-trash-alt"></i> Limpiar progreso</button>
+      <button onclick="closeModal()" class="btn-modal gray">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const EMPRESA = "{{ empresa }}";   // "estado" o "sura" — usado en todas las llamadas /api/<empresa>/...
+let currentIps = "";
+let currentEmpresaId = sessionStorage.getItem("currentEmpresaId_" + EMPRESA) || "";
+let polling = null;
+let logCount = 0;
+let facturasCargadas = 0;
+let identidadActual = localStorage.getItem("identidadUsuario") || "";
+
+function pintarIdentidad() {
+  document.querySelectorAll(".chip-identidad").forEach(btn => {
+    const activo = btn.dataset.id === identidadActual;
+    btn.style.background = activo ? "var(--accent)" : "var(--bg-card)";
+    btn.style.color = activo ? "#fff" : "";
+    btn.style.borderColor = activo ? "var(--accent)" : "var(--border)";
+  });
+  const manual = document.getElementById("identidadManual");
+  const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
+  manual.value = esChip ? "" : identidadActual;
+}
+
+document.querySelectorAll(".chip-identidad").forEach(btn => {
+  btn.addEventListener("click", () => {
+    identidadActual = btn.dataset.id;
+    localStorage.setItem("identidadUsuario", identidadActual);
+    pintarIdentidad();
+  });
+});
+
+document.getElementById("identidadManual").addEventListener("change", (e) => {
+  const valor = e.target.value.trim();
+  if (valor) {
+    identidadActual = valor;
+    localStorage.setItem("identidadUsuario", identidadActual);
+    pintarIdentidad();
+  }
+});
+
+pintarIdentidad();
+
+let manualEntries = [];
+
+function _parsearPegado(texto) {
+  return texto
+    .split(/[\n,;]+/)
+    .map(l => l.replace(/^[\s*\-•·]+/, "").trim())
+    .filter(l => l.length > 0);
+}
+
+function renderManualEntries() {
+  const countInline = document.getElementById("manualCountInline");
+  const detalle = document.getElementById("manualDetalle");
+  if (manualEntries.length === 0) {
+    countInline.textContent = "";
+    detalle.style.display = "none";
+    detalle.innerHTML = "";
+    return;
+  }
+  countInline.textContent = `(${manualEntries.length})`;
+  detalle.style.display = "block";
+  detalle.innerHTML = "";
+  manualEntries.forEach((siniestro, i) => {
+    const fila = document.createElement("div");
+    fila.style.cssText = `display:flex; align-items:center; justify-content:space-between; padding:5px 8px; font-size:0.7rem; ${i > 0 ? "border-top:1px solid var(--border);" : ""}`;
+    fila.innerHTML = `<span>${siniestro}</span>`;
+    const btn = document.createElement("i");
+    btn.className = "fas fa-times";
+    btn.style.cssText = "cursor:pointer; color:var(--text-secondary);";
+    btn.onclick = () => { manualEntries.splice(i, 1); renderManualEntries(); };
+    fila.appendChild(btn);
+    detalle.appendChild(fila);
+  });
+}
+
+document.getElementById("manualAddToggle").addEventListener("click", () => {
+  const content = document.getElementById("manualAddContent");
+  const chevron = document.getElementById("manualAddChevron");
+  const abierto = content.style.display === "block";
+  content.style.display = abierto ? "none" : "block";
+  chevron.className = abierto ? "fas fa-chevron-down" : "fas fa-chevron-up";
+});
+
+document.getElementById("btnManualAdd").addEventListener("click", () => {
+  const nuevas = _parsearPegado(document.getElementById("manualSiniestro").value);
+  if (nuevas.length === 0) {
+    alert("Escribe o pega al menos un siniestro.");
+    return;
+  }
+  manualEntries.push(...nuevas);
+  document.getElementById("manualSiniestro").value = "";
+  renderManualEntries();
+});
+
+
+
+function setEmpresaId(id) {
+  currentEmpresaId = id || "";
+  if (currentEmpresaId) sessionStorage.setItem("currentEmpresaId_" + EMPRESA, currentEmpresaId);
+}
+
+document.getElementById("uploadFile").addEventListener("change", function() {
+  document.getElementById("uploadFileName").textContent = this.files[0]?.name || "";
+});
+
+document.getElementById("btnUpload").addEventListener("click", async () => {
+  const fileInput = document.getElementById("uploadFile");
+  const file = fileInput.files[0];
+  if (!file) { alert("Selecciona un archivo CSV o Excel primero."); return; }
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`/api/${EMPRESA}/upload`, { method: "POST", body: formData });
+  const data = await res.json();
+  const statusDiv = document.getElementById("uploadStatus");
+  if (data.ok) {
+    facturasCargadas = data.count;
+    statusDiv.innerHTML = `<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ${data.count} facturas cargadas${data.omitidas ? ` (${data.omitidas} omitidas por formato)` : ""}.</span>`;
+  } else {
+    facturasCargadas = 0;
+    statusDiv.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
+  }
+});
+
+async function startJob() {
+  const usuario = document.getElementById("usuario").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const dlPath = document.getElementById("downloadPath").value.trim();
+  const fileInput = document.getElementById("uploadFile");
+  const file = fileInput.files[0];
+
+  if (!usuario || !password) { alert("Por favor completa usuario y contraseña."); return; }
+  if ((!facturasCargadas || !file) && manualEntries.length === 0) {
+    alert("Carga el Excel de facturas o agrega al menos una manualmente.");
+    return;
+  }
+
+  document.getElementById("btnStart").disabled = true;
+  document.getElementById("logConsole").innerHTML = "";
+  logCount = 0;
+  setStatus("running");
+  document.getElementById("errorAlert").style.display = "none";
+
+  const formData = new FormData();
+  formData.append("usuario", usuario);
+  formData.append("password", password);
+  formData.append("identidad", identidadActual);
+  formData.append("download_path", dlPath);
+  if (facturasCargadas && file) formData.append("file", file);
+  if (manualEntries.length > 0) formData.append("manual_entries", JSON.stringify(manualEntries));
+
+  let resp = await fetch(`/api/${EMPRESA}/start`, { method: "POST", body: formData });
+  let data = await resp.json();
+
+  if (!data.ok && data.requiere_confirmacion) {
+    const n = Object.keys(data.ya_descargadas).length;
+    const ejemplos = Object.keys(data.ya_descargadas).slice(0, 5).join(", ");
+    const seguir = confirm(
+      `${n} de estas facturas ya fueron descargadas antes (ej: ${ejemplos}).\n\n` +
+      `¿Quieres continuar de todos modos e intentarlas de nuevo?`
+    );
+    if (!seguir) {
+      document.getElementById("btnStart").disabled = false;
+      setStatus("idle");
+      return;
+    }
+    formData.append("confirmar_duplicados", "true");
+    resp = await fetch(`/api/${EMPRESA}/start`, { method: "POST", body: formData });
+    data = await resp.json();
+  }
+
+  if (!data.ok) {
+    setStatus("error");
+    showError(data.error);
+    document.getElementById("btnStart").disabled = false;
+    return;
+  }
+
+  currentIps = data.ips;
+  setEmpresaId(data.empresa_id);
+  addLog({ts: "--:--:--", msg: `🚀 Proceso iniciado | IPS: ${data.ips} | ${data.total} facturas | Destino: ${data.download_path}`, level: "info"});
+  if (polling) clearInterval(polling);
+  polling = setInterval(pollStatus, 1500);
+}
+
+async function pollStatus() {
+  try {
+    const resp = await fetch(`/api/${EMPRESA}/logs?since=${logCount}&empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+    const data = await resp.json();
+    data.logs.forEach(l => addLog(l));
+    logCount += data.logs.length;
+    const sr = await fetch(`/api/${EMPRESA}/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+    const s = await sr.json();
+    updateStats(s.stats);
+    if (!s.running) {
+      clearInterval(polling); polling = null;
+      if (s.error) { setStatus("error"); showError(s.error); } else { setStatus("done"); }
+      document.getElementById("btnStart").disabled = false;
+      refreshFiles();
+      descargarExcelErroresSiHay(s.errores_excel_url);
+    }
+  } catch(e) { console.error(e); }
+}
+
+function descargarExcelErroresSiHay(url) {
+  // Auto-descarga el Excel de errores SOLO si el proceso terminó con al
+  // menos una factura fallida (el backend no manda esta URL si no hubo
+  // ningún error). Cualquier problema aquí queda contenido en este bloque
+  // y no afecta el resto del panel.
+  if (!url) return;
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (e) {
+    console.error("No se pudo autodescargar el Excel de errores:", e);
+  }
+}
+
+function updateStats(stats) {
+  document.getElementById("statTotal").textContent = stats.total;
+  document.getElementById("statOk").textContent = stats.descargadas;
+  document.getElementById("statError").textContent = stats.errores;
+  const pct = stats.total > 0 ? Math.round(((stats.descargadas + stats.errores) / stats.total) * 100) : 0;
+  document.getElementById("progressBar").style.width = pct + "%";
+  document.getElementById("progressLabel").textContent = `${stats.descargadas + stats.errores} de ${stats.total} facturas procesadas`;
+}
+
+function setStatus(st) {
+  const badge = document.getElementById("statusBadge");
+  const txt = document.getElementById("statusText");
+  badge.className = "status-badge " + st;
+  const map = {idle:"En espera", running:"Procesando...", done:"Completado ✓", error:"Error"};
+  if (st === "running") { txt.innerHTML = `<span class="spinner"></span> Procesando...`; }
+  else { txt.textContent = map[st] || st; }
+}
+
+function showError(msg) {
+  const el = document.getElementById("errorAlert");
+  el.style.display = "flex";
+  el.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${msg}`;
+}
+
+function addLog(l) {
+  const c = document.getElementById("logConsole");
+  const div = document.createElement("div");
+  div.className = "log-line " + (l.level || "info");
+  div.innerHTML = `<span class="log-ts">${l.ts}</span><span class="log-msg">${escHtml(l.msg)}</span>`;
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+
+async function clearLogs() {
+  try {
+    const resp = await fetch(`/api/${EMPRESA}/clear?empresa_id=${encodeURIComponent(currentEmpresaId)}`, { method: 'POST' });
+    const data = await resp.json();
+    if (!data.ok) { alert(data.error); return; }
+  } catch (e) { console.error(e); return; }
+
+  // Reset visual completo — solo de ESTA página/empresa (EMPRESA fija por página)
+  document.getElementById("logConsole").innerHTML = "";
+  logCount = 0;
+  facturasCargadas = 0;
+  currentIps = "";
+  document.getElementById("uploadStatus").innerHTML = "";
+  document.getElementById("uploadFileName").textContent = "";
+  document.getElementById("uploadFile").value = "";
+  document.getElementById("errorAlert").style.display = "none";
+  document.getElementById("btnStart").disabled = false;
+  updateStats({total: 0, descargadas: 0, errores: 0});
+  setStatus("idle");
+  if (polling) { clearInterval(polling); polling = null; }
+}
+
+function escHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+async function deleteAllFiles() {
+  const label = currentIps ? `de "${currentIps}"` : "";
+  if (!confirm(`¿Borrar los ZIP ${label}?`)) return;
+  const resp = await fetch(`/api/${EMPRESA}/files?ips=${encodeURIComponent(currentIps)}`, { method: "DELETE" });
+  const data = await resp.json();
+  if (data.ok) { await refreshFiles(); alert(`✅ ${data.message}`); }
+  else { alert(`❌ Error: ${data.error}`); }
+}
+
+async function refreshFiles() {
+  const resp = await fetch(`/api/${EMPRESA}/files?ips=${encodeURIComponent(currentIps)}`);
+  const data = await resp.json();
+  const list = document.getElementById("fileList");
+  if (!data.files.length) { list.innerHTML = '<div class="file-empty">Sin archivos descargados aún.</div>'; return; }
+  list.innerHTML = data.files.map(f => `
+    <div class="file-item">
+      <span class="icon"><i class="fas fa-file-zipper"></i></span>
+      <span class="name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+      <span class="size">${fmtSize(f.size)}</span>
+      <a href="/downloads/${EMPRESA}/${encodeURIComponent(f.name)}" download>⬇</a>
+    </div>
+  `).join("");
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + " KB";
+  return (bytes/1024/1024).toFixed(1) + " MB";
+}
+
+document.getElementById("btnStop").addEventListener("click", async () => {
+  const resp = await fetch(`/api/${EMPRESA}/stop?empresa_id=${encodeURIComponent(currentEmpresaId)}`, { method: "POST" });
+  const data = await resp.json();
+  alert(data.message);
+});
+
+document.getElementById("btnReset").addEventListener("click", async () => {
+  if (!currentIps) { alert("No hay IPS seleccionada todavía (inicia una descarga primero)."); return; }
+  if (confirm(`¿Reiniciar el progreso de "${currentIps}"?`)) {
+    const resp = await fetch(`/api/${EMPRESA}/reset`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ips: currentIps, empresa_id: currentEmpresaId })
+    });
+    const data = await resp.json();
+    alert(data.message);
+    clearLogs(); refreshFiles(); setStatus("idle");
+    document.getElementById("btnStart").disabled = false;
+    if (polling) clearInterval(polling); polling = null; logCount = 0;
+    document.getElementById("uploadStatus").innerHTML = "";
+    facturasCargadas = 0;
+    updateStats({total:0, descargadas:0, errores:0});
+  }
+});
+
+async function limpiarProgreso() {
+  if (!currentIps) { alert("No hay IPS seleccionada todavía."); return; }
+  if (confirm(`¿Reiniciar el progreso de "${currentIps}"?`)) {
+    const resp = await fetch(`/api/${EMPRESA}/reset`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ips: currentIps, empresa_id: currentEmpresaId })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      alert(data.message); closeModal(); clearLogs(); refreshFiles(); setStatus("idle");
+      document.getElementById("btnStart").disabled = false;
+      if (polling) clearInterval(polling); polling = null; logCount = 0;
+      document.getElementById("uploadStatus").innerHTML = "";
+      facturasCargadas = 0;
+      updateStats({total:0, descargadas:0, errores:0});
+    } else { alert(`Error: ${data.error}`); }
+  }
+}
+
+async function verProgreso() {
+  if (!currentIps) { alert("Inicia una descarga primero para tener una IPS seleccionada."); return; }
+  const modal = document.getElementById("progresoModal");
+  const modalInfo = document.getElementById("modalInfo");
+  const modalLista = document.getElementById("modalLista");
+  modalLista.innerHTML = ""; modalInfo.innerHTML = "Cargando..."; modal.style.display = "flex";
+  try {
+    const resp = await fetch(`/api/${EMPRESA}/progreso?ips=${encodeURIComponent(currentIps)}`);
+    const data = await resp.json();
+    if (!data.ok) { modalInfo.innerHTML = `<span style="color: var(--error);">${data.error}</span>`; return; }
+    if (data.completadas && data.completadas.length > 0) {
+      modalInfo.innerHTML = `<strong style="color: var(--success);">${data.cantidad}</strong> facturas completadas`;
+      data.completadas.forEach(f => { const li = document.createElement("li"); li.textContent = f; modalLista.appendChild(li); });
+    } else {
+      modalInfo.innerHTML = `<span style="color: var(--text-secondary);">No hay facturas completadas.</span>`;
+      modalLista.innerHTML = '<li style="color:var(--text-secondary);">Ninguna</li>';
+    }
+  } catch (err) { modalInfo.innerHTML = `<span style="color: var(--error);">Error: ${err.message}</span>`; }
+}
+document.getElementById("btnProgreso").addEventListener("click", verProgreso);
+
+function closeModal() { document.getElementById("progresoModal").style.display = "none"; }
+
+function copiarLista() {
+  const items = document.querySelectorAll("#modalLista li");
+  const texto = Array.from(items).map(li => li.textContent).join("\n");
+  if (!texto) return;
+  navigator.clipboard.writeText(texto).then(() => alert("Lista copiada.")).catch(() => alert("No se pudo copiar."));
+}
+
+async function exportarProgresoExcel() {
+  if (!currentIps) { alert("No hay IPS seleccionada todavía."); return; }
+  window.location.href = `/api/${EMPRESA}/exportar_progreso?ips=${encodeURIComponent(currentIps)}`;
+}
+
+window.onclick = function(event) {
+  const modal = document.getElementById("progresoModal");
+  if (event.target === modal) closeModal();
+}
+
+// Al cargar/volver a la página: recuperar el log completo y las estadísticas
+// reales del proceso en curso (si lo hay), en vez de arrancar en blanco como
+// si nada se hubiera iniciado. Esto es clave porque el job corre en un hilo
+// del servidor y sigue vivo aunque se recargue o se cambie de pestaña/página.
+async function initPage() {
+  refreshFiles();
+  if (!currentEmpresaId) return;  // nunca se ha iniciado nada en este navegador
+  try {
+    const lr = await fetch(`/api/${EMPRESA}/logs?since=0&empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+    const ld = await lr.json();
+    if (ld.logs && ld.logs.length) {
+      document.getElementById("logConsole").innerHTML = "";
+      ld.logs.forEach(l => addLog(l));
+      logCount = ld.logs.length;
+    }
+    const sr = await fetch(`/api/${EMPRESA}/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+    const s = await sr.json();
+    updateStats(s.stats);
+    if (s.running) {
+      setStatus("running");
+      document.getElementById("btnStart").disabled = true;
+      if (polling) clearInterval(polling);
+      polling = setInterval(pollStatus, 1500);
+    } else if (s.finished) {
+      setStatus(s.error ? "error" : "done");
+      if (s.error) showError(s.error);
+    }
+  } catch (e) { console.error(e); }
+}
+initPage();
+</script>
+</body>
+</html>

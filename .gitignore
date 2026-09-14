@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+venv/
+
+# Soportes/facturas reales descargadas — nunca deben subirse al repositorio
+downloads/*/*
+!downloads/*/.gitkeep
+
+# Progreso de reanudación (datos de ejecución, no de código)
+progreso.json

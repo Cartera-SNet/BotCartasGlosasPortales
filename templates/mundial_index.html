@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<title>A3M — Mundial de Seguros</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<style>
+  :root {
+    --bg-body: #f4f7fb;
+    --bg-card: #ffffff;
+    --accent: #0a8fd6;          /* azul Mundial */
+    --accent-light: #e3f3fc;
+    --accent-hover: #0773ac;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --error: #ef4444;
+    --warning: #f59e0b;
+    --yellow: #f7b500;          /* amarillo botón INGRESAR */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; }
+
+  header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 50; }
+  .header-icon { width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: transparent; }
+  .header-icon img { width: 100%; height: 100%; object-fit: contain; }
+  header h1 { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+  header p { font-size: 0.7rem; color: var(--text-secondary); }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+
+  .card { background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden; }
+  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.75rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px; background: #f8fafc; }
+  .card-header .icon { width: 24px; height: 24px; background: var(--accent-light); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--accent); }
+  .card-body { padding: 14px 16px; }
+
+  .form-group { margin-bottom: 12px; }
+  label { display: block; font-size: 0.65rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+
+  .input-field { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.8rem; color: var(--text-primary); background: var(--bg-card); transition: all 0.2s; outline: none; }
+  .input-field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10, 143, 214, 0.12); }
+  .input-field::placeholder { color: #94a3b8; }
+  textarea.input-field { resize: vertical; min-height: 70px; font-family: 'SF Mono','Fira Code',monospace; font-size: 0.72rem; }
+
+  .hint { font-size: 0.6rem; color: var(--text-secondary); margin-top: 5px; display: flex; align-items: center; gap: 4px; }
+  .hint i { color: var(--accent); font-size: 0.65rem; }
+
+  .path-display { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.65rem; color: var(--text-secondary); margin-top: 5px; font-family: monospace; }
+
+  .upload-area { background: #f8fafc; border: 1.5px dashed var(--border); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.2s; }
+  .upload-area:hover { border-color: var(--accent); background: var(--accent-light); }
+  .upload-area input[type="file"] { display: none; }
+  .upload-label { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+  .upload-label:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+  .btn-upload { margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, var(--accent), #2aa8e8); color: white; border: none; border-radius: 7px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-upload:hover { transform: translateY(-1px); }
+
+  .alert { padding: 8px 12px; border-radius: 8px; font-size: 0.7rem; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 6px; border: 1px solid; }
+  .alert.info { background: var(--accent-light); color: var(--accent-hover); border-color: rgba(10, 143, 214, 0.3); }
+  .alert.warn { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+
+  .btn-primary { width: 100%; padding: 11px 18px; background: linear-gradient(135deg, var(--success), #059669); color: white; border: none; border-radius: 9px; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 3px 10px rgba(16, 185, 129, 0.2); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .button-group { display: flex; gap: 6px; margin-top: 10px; }
+  .btn-secondary { flex: 1; padding: 9px 10px; border: none; border-radius: 8px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .btn-stop { background: linear-gradient(135deg, var(--error), #dc2626); color: white; box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15); }
+  .btn-stop:hover { transform: translateY(-1px); }
+  .btn-reset { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-reset:hover { background: #e2e8f0; }
+  .btn-progreso { background: linear-gradient(135deg, var(--accent), #2aa8e8); color: white; box-shadow: 0 2px 6px rgba(10, 143, 214, 0.15); }
+  .btn-progreso:hover { transform: translateY(-1px); }
+
+  .stats-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .stat-box { background: #f8fafc; border-radius: 8px; padding: 10px 8px; text-align: center; border: 1px solid var(--border); }
+  .stat-box .val { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+  .stat-box.total .val { color: var(--accent); }
+  .stat-box.ok .val { color: var(--success); }
+  .stat-box.error .val { color: var(--error); }
+  .stat-box .lbl { font-size: 0.6rem; color: var(--text-secondary); margin-top: 3px; text-transform: uppercase; font-weight: 600; }
+
+  .progress-wrap { margin-bottom: 12px; }
+  .progress-bar-bg { height: 6px; background: #f1f5f9; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--success), #34d399); border-radius: 6px; transition: width 0.4s ease; width: 0%; box-shadow: 0 0 6px rgba(16, 185, 129, 0.25); }
+  .progress-label { font-size: 0.65rem; color: var(--text-secondary); margin-top: 5px; text-align: center; font-weight: 500; }
+
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: 600; margin-bottom: 12px; }
+  .status-badge.idle { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); }
+  .status-badge.running { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(10, 143, 214, 0.3); }
+  .status-badge.done { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+  .status-badge.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+  .spinner { width: 8px; height: 8px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .log-console { background: #0f172a; border-radius: 8px; padding: 10px 12px; height: 220px; overflow-y: auto; font-family: 'SF Mono','Fira Code',monospace; font-size: 0.68rem; line-height: 1.5; color: #94a3b8; }
+  .log-console::-webkit-scrollbar { width: 4px; }
+  .log-console::-webkit-scrollbar-track { background: #1e293b; }
+  .log-console::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+  .log-line { display: flex; gap: 7px; padding: 1px 0; }
+  .log-ts { color: #475569; flex-shrink: 0; font-size: 0.6rem; }
+  .log-msg { flex: 1; word-break: break-word; }
+  .log-line.info .log-msg { color: #94a3b8; }
+  .log-line.success .log-msg { color: #34d399; }
+  .log-line.error .log-msg { color: #f87171; }
+  .log-line.warn .log-msg { color: #fbbf24; }
+
+  .file-list { max-height: 150px; overflow-y: auto; }
+  .file-list::-webkit-scrollbar { width: 3px; }
+  .file-item { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; font-size: 0.7rem; border-bottom: 1px solid var(--border); }
+  .file-item:last-child { border-bottom: none; }
+  .file-item:hover { background: #f8fafc; }
+  .file-item .icon { width: 24px; height: 24px; background: var(--accent-light); border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 0.65rem; flex-shrink: 0; }
+  .file-item .name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-item .size { color: var(--text-secondary); font-size: 0.6rem; flex-shrink: 0; }
+  .file-item a { color: var(--accent); text-decoration: none; font-size: 0.65rem; font-weight: 600; flex-shrink: 0; padding: 3px 7px; border-radius: 5px; background: var(--accent-light); transition: all 0.15s; }
+  .file-item a:hover { background: #cbeafa; }
+  .file-empty { color: var(--text-secondary); font-size: 0.7rem; text-align: center; padding: 20px 0; }
+
+  .btn-clear { background: #f1f5f9; border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; font-size: 0.65rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; margin-left: auto; }
+  .btn-clear:hover { background: #e2e8f0; color: var(--text-primary); }
+
+  /* chips de resumen por tipo */
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .chip { font-size: 0.62rem; font-weight: 600; padding: 3px 9px; border-radius: 50px; background: var(--accent-light); color: var(--accent-hover); border: 1px solid rgba(10,143,214,0.25); }
+
+  .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); backdrop-filter: blur(2px); justify-content: center; align-items: center; }
+  .modal-content { background: var(--bg-card); border-radius: 12px; width: 520px; max-width: 90%; max-height: 75%; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); box-shadow: 0 15px 30px rgba(0,0,0,0.1); }
+  .modal-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--accent), #2aa8e8); color: white; }
+  .modal-header h3 { margin: 0; font-size: 0.85rem; font-weight: 600; }
+  .modal-close { background: rgba(255,255,255,0.2); border: none; width: 24px; height: 24px; border-radius: 6px; font-size: 1rem; cursor: pointer; color: white; }
+  .modal-close:hover { background: rgba(255,255,255,0.3); }
+  .modal-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+  .modal-footer { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .lista { list-style: none; padding: 0; margin: 0; max-height: 240px; overflow-y: auto; }
+  .lista li { padding: 7px 10px; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 0.75rem; color: var(--text-primary); display:flex; justify-content:space-between; }
+  .lista li .tag { font-size: 0.6rem; color: var(--accent-hover); background: var(--accent-light); padding: 1px 7px; border-radius: 50px; }
+  .btn-modal { padding: 6px 12px; border: none; border-radius: 7px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 4px; }
+  .btn-modal.green { background: var(--success); color: white; }
+  .btn-modal.gray { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-modal:hover { transform: translateY(-1px); }
+
+  @media (max-width: 780px) { main { grid-template-columns: 1fr; } }
+
+  /* ── Pestañas principales ── */
+  .tabs-nav { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin: 0 24px; }
+  .tab-btn { padding: 10px 22px; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-btn:hover:not(.active) { color: var(--text-primary); background: #f8fafc; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: contents; }
+
+  /* ── Módulo cruce ── */
+  .cruce-grid { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .upload-excel { border-radius: 10px; padding: 12px 14px; background: #f8fafc; border: 1px solid var(--border); }
+  .upload-excel .upload-label-title { font-size: 0.65rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+  .upload-excel .file-name { font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; min-height: 16px; font-style: italic; }
+  .upload-excel .file-name.loaded { color: var(--accent); font-style: normal; font-weight: 500; }
+  .btn-seleccionar { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: var(--bg-card); border: 1.5px solid var(--border); border-radius: 7px; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+  .btn-seleccionar:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+  .btn-cruce { width: 100%; padding: 11px; background: linear-gradient(135deg, var(--accent), #2aa8e8); color: white; border: none; border-radius: 9px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.2s; box-shadow: 0 3px 10px rgba(10,143,214,0.2); }
+  .btn-cruce:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn-cruce:disabled { opacity: 0.5; cursor: not-allowed; }
+  .cruce-resultado { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .cruce-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; max-height: 200px; overflow-y: auto; }
+  .cruce-chip { font-size: 0.68rem; padding: 3px 9px; border-radius: 5px; font-weight: 500; }
+  .chip-dev { background: rgba(10,143,214,0.1); color: var(--accent); }
+  .chip-liq { background: rgba(16,185,129,0.1); color: var(--success); }
+  .btn-cargar-lista { margin-top: 12px; width: 100%; padding: 10px; background: linear-gradient(135deg, var(--success), #059669); color: white; border: none; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
+  .btn-cargar-lista:hover { transform: translateY(-1px); }
+  .btn-descargar-cruce { margin-top: 8px; width: 100%; padding: 9px; background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
+  .btn-descargar-cruce:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+  .cruce-log { background: #0d1117; color: #7ee787; border-radius: 8px; padding: 10px 14px; font-size: 0.68rem; font-family: monospace; margin-top: 10px; min-height: 60px; max-height: 120px; overflow-y: auto; }
+  .volver-panel { margin-left: auto; text-decoration: none; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; transition: all 0.15s; }
+  .volver-panel:hover { background: rgba(0,0,0,0.05); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-icon"><img src="/static/logo_mundial.png" alt="Logo"></div>
+  <div>
+    <h1>Descargador Cartas Glosa — Seguros Mundial</h1>
+    <p>Portal A3M / iqdigital · Consulta y descarga automática de cartas glosa</p>
+  </div>
+  <a href="/" class="volver-panel"><i class="fas fa-arrow-left"></i> Panel principal</a>
+</header>
+
+<!-- Nav de pestañas -->
+<div class="tabs-nav">
+  <button class="tab-btn active" onclick="switchTab('descargador', this)">
+    <i class="fas fa-download"></i> Descargador
+  </button>
+  <button class="tab-btn" onclick="switchTab('cruce', this)">
+    <i class="fas fa-code-branch"></i> Cruce de Excel
+  </button>
+</div>
+
+<div id="tab-descargador" class="tab-panel active">
+<main>
+
+  <!-- Panel izquierdo: Configuración -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-cog"></i></span> Panel de Control
+      </div>
+      <div class="card-body">
+
+        <div class="form-group">
+          <label>Usuario</label>
+          <input type="text" id="usuario" class="input-field" placeholder="Digite usuario" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="password" class="input-field" placeholder="Digite contraseña" autocomplete="current-password">
+        </div>
+
+        <div class="form-group">
+          <label>Nombre del lote (opcional)</label>
+          <input type="text" id="lote" class="input-field" placeholder="Ej: Junio_2026">
+          <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[lote]/[IPS]/</div>
+          <div class="hint"><i class="fas fa-info-circle"></i><span>La subcarpeta se nombra automáticamente según el NIT del usuario (la IPS).</span></div>
+        </div>
+
+        <!-- Importar lista -->
+        <div class="form-group">
+          <label>📎 Cargar Excel de consecutivos</label>
+          <div class="upload-area">
+            <label for="uploadFile" class="upload-label">
+              <i class="fas fa-file-import"></i> Seleccionar archivo
+            </label>
+            <input type="file" id="uploadFile" accept=".csv,.xlsx,.xls">
+            <div id="uploadFileName" style="font-size:0.65rem; color:var(--text-secondary); margin-top:5px;"></div>
+            <button type="button" id="btnUpload" class="btn-upload">
+              <i class="fas fa-upload"></i> Cargar lista
+            </button>
+          </div>
+          <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
+          <div class="chips" id="resumenChips"></div>
+        </div>
+
+        <div class="form-group">
+          <label>O pega los consecutivos (uno por línea)</label>
+          <textarea id="valores" class="input-field" placeholder="DEV-202606000097&#10;LIQ-202605001778&#10;..."></textarea>
+          <div class="hint"><i class="fas fa-info-circle"></i><span>El tipo (Dev/Obj · Liquidación · Radicado) se detecta por el prefijo.</span></div>
+        </div>
+
+        <div class="alert info">
+          <i class="fas fa-shield-halved"></i>
+          <span>El login tiene <strong>reCAPTCHA</strong>: se abrirá el navegador con tus datos cargados; <strong>resuelve el captcha y presiona INGRESAR</strong> y el proceso continúa solo.</span>
+        </div>
+
+        <div class="form-group" id="identidadBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
+          <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0; display:block; margin-bottom:6px;">¿Quién eres?</label>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="chip-identidad" data-id="SaludNet" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Salud Net</button>
+            <button type="button" class="chip-identidad" data-id="Campbell" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Campbell</button>
+          </div>
+          <input type="text" id="identidadManual" placeholder="" autocomplete="off"
+                 style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+        </div>
+
+        <button class="btn-primary" id="btnStart" onclick="startJob()">
+          <i class="fas fa-rocket"></i> Iniciar descarga
+        </button>
+
+        <div class="button-group">
+          <button class="btn-secondary btn-stop" id="btnStop">
+            <i class="fas fa-stop"></i> Detener
+          </button>
+          <button class="btn-secondary btn-reset" id="btnReset">
+            <i class="fas fa-redo"></i> Reiniciar
+          </button>
+          <button class="btn-secondary btn-progreso" id="btnProgreso">
+            <i class="fas fa-list-check"></i> Lista
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel derecho -->
+  <div style="display:flex; flex-direction:column; gap:14px;">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-chart-line"></i></span> Progreso
+      </div>
+      <div class="card-body">
+        <div id="statusBadge" class="status-badge idle">
+          <span id="statusDot" style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+          <span id="statusText">En espera</span>
+        </div>
+        <div class="stats-bar">
+          <div class="stat-box total"><div class="val" id="statTotal">0</div><div class="lbl">Total</div></div>
+          <div class="stat-box ok"><div class="val" id="statOk">0</div><div class="lbl">Descargadas</div></div>
+          <div class="stat-box error"><div class="val" id="statError">0</div><div class="lbl">Errores</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar"></div></div>
+          <div class="progress-label" id="progressLabel">0 de 0 cartas procesadas</div>
+        </div>
+        <div id="errorAlert" class="alert" style="display:none; background:#fee2e2; color:#991b1b; border-color:#fecaca;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-terminal"></i></span> Log de ejecución
+        <button onclick="clearLogs()" class="btn-clear">Limpiar</button>
+      </div>
+      <div class="card-body" style="padding:8px;">
+        <div class="log-console" id="logConsole">
+          <div class="log-line info"><span class="log-ts">--:--:--</span><span class="log-msg">Listo. Carga el Excel de consecutivos y presiona "Iniciar descarga".</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-folder-open"></i></span> Archivos descargados
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="refreshFiles()" class="btn-clear" title="Actualizar lista">↻</button>
+          <button onclick="deleteSoportes()" class="btn-clear" title="Borrar soportes (ZIPs/PDFs). El progreso se conserva." style="color:#e74c3c;font-size:13px;padding:3px 8px;border:1px solid #e74c3c;border-radius:5px;">🗑 Borrar soportes</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:8px;">
+        <div class="file-list" id="fileList">
+          <div class="file-empty">Sin archivos descargados aún.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+</main>
+</div><!-- fin tab descargador -->
+
+<!-- ═══════════════ PESTAÑA: CRUCE DE EXCEL ═══════════════ -->
+<div id="tab-cruce" class="tab-panel">
+<div class="cruce-grid">
+
+  <!-- Columna izquierda: uploaders -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-file-excel"></i></span> Cargar archivos Excel
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
+
+        <!-- Excel Mundial -->
+        <div class="upload-excel">
+          <div class="upload-label-title"><i class="fas fa-globe" style="color:#0a8fd6"></i> Excel Mundial (Reporte MS)</div>
+          <label for="mundialFile" class="btn-seleccionar"><i class="fas fa-file-excel"></i> Seleccionar archivo</label>
+          <input type="file" id="mundialFile" accept=".xlsx,.xls" style="display:none" onchange="setFileName(this,'mundialName')">
+          <div class="file-name" id="mundialName">Ningún archivo seleccionado</div>
+        </div>
+
+        <!-- Excel Cartera -->
+        <div class="upload-excel">
+          <div class="upload-label-title"><i class="fas fa-folder-open" style="color:#f59e0b"></i> Excel Cartera IPS</div>
+          <label for="carteraFile" class="btn-seleccionar"><i class="fas fa-file-excel"></i> Seleccionar archivo</label>
+          <input type="file" id="carteraFile" accept=".xlsx,.xls" style="display:none" onchange="setFileName(this,'carteraName')">
+          <div class="file-name" id="carteraName">Ningún archivo seleccionado</div>
+        </div>
+
+        <!-- Excel Esculapio -->
+        <div class="upload-excel">
+          <div class="upload-label-title"><i class="fas fa-hospital" style="color:#10b981"></i> Excel Esculapio</div>
+          <label for="esculapioFile" class="btn-seleccionar"><i class="fas fa-file-excel"></i> Seleccionar archivo</label>
+          <input type="file" id="esculapioFile" accept=".xlsx,.xls" style="display:none" onchange="setFileName(this,'esculapioName')">
+          <div class="file-name" id="esculapioName">Ningún archivo seleccionado</div>
+        </div>
+
+        <button class="btn-cruce" id="btnCruce" onclick="ejecutarCruce()">
+          <i class="fas fa-code-branch"></i> Ejecutar cruce
+        </button>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-info-circle"></i></span> ¿Cómo funciona?
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:flex-start;gap:11px;font-size:0.78rem;color:var(--text-primary);">
+          <span style="width:26px;height:26px;border-radius:50%;background:rgba(10,143,214,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:0.75rem;">1</span>
+          <span style="padding-top:3px;">Carga los tres reportes: <strong>Mundial</strong>, <strong>Cartera</strong> y <strong>Esculapio</strong>.</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:11px;font-size:0.78rem;color:var(--text-primary);">
+          <span style="width:26px;height:26px;border-radius:50%;background:rgba(10,143,214,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:0.75rem;">2</span>
+          <span style="padding-top:3px;">El sistema compara las facturas y depura automáticamente las ya gestionadas.</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:11px;font-size:0.78rem;color:var(--text-primary);">
+          <span style="width:26px;height:26px;border-radius:50%;background:rgba(10,143,214,0.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:0.75rem;">3</span>
+          <span style="padding-top:3px;">Obtienes la relación final de cartas pendientes, lista para descargar.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Columna derecha: resultado -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-list-check"></i></span> Resultado del cruce
+        <span id="cruceConteo" style="margin-left:auto;font-size:0.68rem;color:var(--text-secondary);"></span>
+      </div>
+      <div class="card-body">
+        <div id="cruceLog" class="cruce-log">Aquí aparecerá el resultado del cruce...</div>
+        <div class="cruce-chips" id="cruceChips"></div>
+        <div id="cruceBotones" style="display:none;">
+          <button class="btn-cargar-lista" onclick="cargarCruceAlDescargador()">
+            <i class="fas fa-arrow-right"></i> Cargar al descargador
+          </button>
+          <button class="btn-descargar-cruce" onclick="descargarCruceExcel()">
+            <i class="fas fa-file-download"></i> Descargar como Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div><!-- fin tab cruce -->
+
+<!-- Modal historial de progreso -->
+<div id="progresoModal" class="modal">
+  <div class="modal-content" style="max-width:600px;">
+    <div class="modal-header">
+      <h3><i class="fas fa-history"></i> Historial de progreso</h3>
+      <button class="modal-close" onclick="closeProgresoModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="progresoModalBody" style="max-height:400px;overflow-y:auto;">
+      <p style="color:var(--text-secondary)">Cargando...</p>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button onclick="deleteProgreso()" style="background:none;border:1px solid #e74c3c;color:#e74c3c;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">
+        🗑 Borrar progreso
+      </button>
+      <button onclick="closeProgresoModal()" class="btn-modal gray">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal lista de consecutivos cargados -->
+<div id="listaModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>📋 Consecutivos cargados</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modalInfo" style="margin-bottom: 8px; color: var(--text-secondary);">Sin datos.</p>
+      <ul id="modalLista" class="lista"></ul>
+    </div>
+    <div class="modal-footer">
+      <button onclick="copiarLista()" class="btn-modal gray"><i class="fas fa-copy"></i> Copiar</button>
+      <button onclick="closeModal()" class="btn-modal gray">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let identidadActual = localStorage.getItem("identidadUsuario") || "";
+
+function pintarIdentidad() {
+  document.querySelectorAll(".chip-identidad").forEach(btn => {
+    const activo = btn.dataset.id === identidadActual;
+    btn.style.background = activo ? "var(--accent)" : "var(--bg-card)";
+    btn.style.color = activo ? "#fff" : "";
+    btn.style.borderColor = activo ? "var(--accent)" : "var(--border)";
+  });
+  const manual = document.getElementById("identidadManual");
+  const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
+  manual.value = esChip ? "" : identidadActual;
+}
+
+document.querySelectorAll(".chip-identidad").forEach(btn => {
+  btn.addEventListener("click", () => {
+    identidadActual = btn.dataset.id;
+    localStorage.setItem("identidadUsuario", identidadActual);
+    pintarIdentidad();
+  });
+});
+
+document.getElementById("identidadManual").addEventListener("change", (e) => {
+  const valor = e.target.value.trim();
+  if (valor) {
+    identidadActual = valor;
+    localStorage.setItem("identidadUsuario", identidadActual);
+    pintarIdentidad();
+  }
+});
+
+pintarIdentidad();
+
+let polling = null;
+let logCount = 0;
+let cargados = [];
+let currentEmpresaId = sessionStorage.getItem("currentEmpresaId_mundial") || "";
+
+function setEmpresaId(id) {
+  currentEmpresaId = id || "";
+  if (currentEmpresaId) sessionStorage.setItem("currentEmpresaId_mundial", currentEmpresaId);
+}   // consecutivos cargados (Excel o pegados)
+
+// ── Tipo por prefijo (espejo del backend) ───────────────────────────────────
+function detectarTipo(v) {
+  const u = (v||'').trim().toUpperCase();
+  if (u.startsWith('DEV')) return 'No Dev/Obj';
+  if (u.startsWith('LIQ')) return 'No Liquidación';
+  return 'No Radicado';
+}
+
+function getValoresTexto() {
+  return document.getElementById('valores').value.trim();
+}
+function parseValores(txt) {
+  if (!txt) return [];
+  const arr = txt.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+  return [...new Set(arr)];
+}
+
+function updatePathDisplay() {
+  const lote = document.getElementById('lote').value.trim();
+  document.getElementById('pathDisplay').textContent = lote
+    ? `📂 Se usará: downloads/${lote.replace(/[^\w\-]/g,'_')}/[IPS]/`
+    : '📂 Se usará: downloads/[lote auto]/[IPS]/';
+}
+document.getElementById('lote').addEventListener('input', updatePathDisplay);
+
+document.getElementById('uploadFile').addEventListener('change', function() {
+  document.getElementById('uploadFileName').textContent = this.files[0]?.name || '';
+});
+
+// ── Cargar Excel/CSV ─────────────────────────────────────────────────────────
+document.getElementById('btnUpload').addEventListener('click', async () => {
+  const file = document.getElementById('uploadFile').files[0];
+  if (!file) { alert('Selecciona un archivo Excel o CSV primero.'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch('/mundial/api/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  const statusDiv = document.getElementById('uploadStatus');
+  const chips = document.getElementById('resumenChips');
+  if (data.ok) {
+    cargados = data.valores;
+    document.getElementById('valores').value = data.valores.join('\n');
+    statusDiv.innerHTML = `<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ${data.count} consecutivos cargados.</span>`;
+    chips.innerHTML = Object.entries(data.resumen || {})
+      .map(([k,v]) => `<span class="chip">${k}: ${v}</span>`).join('');
+  } else {
+    statusDiv.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
+    chips.innerHTML = '';
+  }
+});
+
+// recalcular chips al escribir manualmente
+document.getElementById('valores').addEventListener('input', () => {
+  const vals = parseValores(getValoresTexto());
+  cargados = vals;
+  const resumen = {};
+  vals.forEach(v => { const t = detectarTipo(v); resumen[t] = (resumen[t]||0)+1; });
+  document.getElementById('resumenChips').innerHTML = Object.entries(resumen)
+    .map(([k,v]) => `<span class="chip">${k}: ${v}</span>`).join('');
+});
+
+// ── Iniciar ──────────────────────────────────────────────────────────────────
+async function startJob() {
+  const usuario = document.getElementById('usuario').value.trim();
+  const password = document.getElementById('password').value.trim();
+  const lote = document.getElementById('lote').value.trim();
+  const valores = getValoresTexto();
+
+  if (!usuario || !password) { alert('Digite usuario y contraseña.'); return; }
+  if (parseValores(valores).length === 0) { alert('Carga el Excel o pega al menos un consecutivo.'); return; }
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('logConsole').innerHTML = '';
+  logCount = 0;
+  setStatus('running');
+  document.getElementById('errorAlert').style.display = 'none';
+
+  let resp = await fetch('/mundial/api/start', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual })
+  });
+  let data = await resp.json();
+
+  if (!data.ok && data.requiere_confirmacion) {
+    const n = Object.keys(data.ya_descargadas).length;
+    const ejemplos = Object.keys(data.ya_descargadas).slice(0, 5).join(', ');
+    const seguir = confirm(
+      `${n} de estos consecutivos ya fueron descargados antes (ej: ${ejemplos}).\n\n` +
+      `¿Quieres continuar de todos modos e intentarlos de nuevo?`
+    );
+    if (!seguir) {
+      document.getElementById('btnStart').disabled = false;
+      setStatus('idle');
+      return;
+    }
+    resp = await fetch('/mundial/api/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, confirmar_duplicados: true })
+    });
+    data = await resp.json();
+  }
+
+  if (!data.ok) {
+    setStatus('error'); showError(data.error);
+    document.getElementById('btnStart').disabled = false;
+    return;
+  }
+  setEmpresaId(data.empresa_id);
+  addLog({ts:'--:--:--', msg:`🚀 Proceso iniciado | ${data.total} cartas | Destino: ${data.download_path}`, level:'info'});
+  if (polling) clearTimeout(polling);
+  pollStatus();
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch(`/mundial/api/logs?since=${logCount}&empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+    const d = await r.json();
+    d.logs.forEach(l => addLog(l));
+    logCount += d.logs.length;
+    const sr = await fetch(`/mundial/api/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+    const s = await sr.json();
+    updateStats(s.stats);
+    if (!s.running) {
+      polling = null;
+      if (s.error) { setStatus('error'); showError(s.error); }
+      else setStatus('done');
+      document.getElementById('btnStart').disabled = false;
+      refreshFiles();
+      descargarExcelErroresSiHay(s.errores_excel_url);
+      return;
+    }
+  } catch(e) { console.error(e); }
+  // Se reprograma el siguiente sondeo SOLO cuando este terminó (evita
+  // sondeos superpuestos que duplicaban líneas del log si una respuesta
+  // tardaba más de 1.5s).
+  polling = setTimeout(pollStatus, 1500);
+}
+
+function descargarExcelErroresSiHay(url) {
+  // Auto-descarga el Excel de errores SOLO si el proceso terminó con al
+  // menos una factura fallida (el backend no manda esta URL si no hubo
+  // ningún error). Cualquier problema aquí queda contenido en este bloque
+  // y no afecta el resto del panel.
+  if (!url) return;
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (e) {
+    console.error("No se pudo autodescargar el Excel de errores:", e);
+  }
+}
+
+function updateStats(stats) {
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statOk').textContent = stats.descargadas;
+  document.getElementById('statError').textContent = stats.errores;
+  const pct = stats.total > 0 ? Math.round(((stats.descargadas + stats.errores) / stats.total) * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${stats.descargadas + stats.errores} de ${stats.total} cartas procesadas`;
+}
+
+function setStatus(st) {
+  const badge = document.getElementById('statusBadge');
+  const txt = document.getElementById('statusText');
+  badge.className = 'status-badge ' + st;
+  const map = {idle:'En espera', running:'Procesando...', done:'Completado ✓', error:'Error'};
+  if (st === 'running') txt.innerHTML = `<span class="spinner"></span> Procesando...`;
+  else txt.textContent = map[st] || st;
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorAlert');
+  el.style.display = 'flex';
+  el.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${msg}`;
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────
+function addLog(l) {
+  const c = document.getElementById('logConsole');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + (l.level || 'info');
+  div.innerHTML = `<span class="log-ts">${l.ts}</span><span class="log-msg">${escHtml(l.msg)}</span>`;
+  c.appendChild(div); c.scrollTop = c.scrollHeight;
+}
+function clearLogs() {
+  document.getElementById('logConsole').innerHTML = '';
+  logCount = 0;
+  fetch(`/mundial/api/logs?empresa_id=${encodeURIComponent(currentEmpresaId)}`, { method: 'DELETE' }).catch(console.error);
+}
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Archivos ─────────────────────────────────────────────────────────────────
+function loteSafe() { return document.getElementById('lote').value.trim().replace(/[^\w\-]/g,'_'); }
+
+async function deleteProgreso() {
+  if (!confirm(`¿Borrar TODO el historial de progreso?\n\nLos soportes (ZIPs/PDFs) NO se borran.`)) return;
+  // Enviar lote vacío → el backend borra todos los progreso.json
+  const r = await fetch('/mundial/api/reset', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ lote: '', empresa_id: currentEmpresaId }) });
+  const d = await r.json();
+  if (d.ok) {
+    alert('✅ ' + (d.message || 'Progreso eliminado.'));
+    // Recargar el modal para mostrar que quedó vacío
+    openProgresoModal();
+  } else {
+    alert('❌ ' + (d.error || d.message));
+  }
+}
+
+async function deleteSoportes() {
+  const lote = loteSafe();
+  if (!confirm(`¿Borrar soportes (ZIPs y PDFs)${lote?' del lote "'+lote+'"':''}?\n\nEl historial de progreso se conservará.`)) return;
+  const r = await fetch(`/mundial/api/files/soportes${lote?'?lote='+encodeURIComponent(lote):''}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.ok) { await refreshFiles(); alert(`✅ ${d.message}`); }
+  else alert(`❌ ${d.error}`);
+}
+async function deleteAllFiles() { return deleteSoportes(); }
+
+async function refreshFiles() {
+  const lote = loteSafe();
+  const r = await fetch(`/mundial/api/files?lote=${encodeURIComponent(lote)}`);
+  const d = await r.json();
+  const list = document.getElementById('fileList');
+  if (!d.files.length) { list.innerHTML = '<div class="file-empty">Sin archivos descargados aún.</div>'; return; }
+  list.innerHTML = d.files.map(f => `
+    <div class="file-item">
+      <span class="icon"><i class="fas fa-file-archive"></i></span>
+      <span class="name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+      <span class="size">${fmtSize(f.size)}</span>
+      <a href="/mundial/downloads/${f.lote ? f.lote+'/' : ''}${encodeURIComponent(f.name)}" download>⬇</a>
+    </div>`).join('');
+}
+function fmtSize(b) { if (b<1024) return b+' B'; if (b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+
+// ── Botones ──────────────────────────────────────────────────────────────────
+document.getElementById('btnStop').addEventListener('click', async () => {
+  const r = await fetch(`/mundial/api/stop?empresa_id=${encodeURIComponent(currentEmpresaId)}`, { method: 'POST' });
+  const d = await r.json(); alert(d.message);
+});
+
+document.getElementById('btnReset').addEventListener('click', async () => {
+  const lote = document.getElementById('lote').value.trim();
+  if (confirm(`¿Reiniciar el estado${lote? ' del lote "'+lote+'"':''}?\n\nSe borrará el progreso de descarga.`)) {
+    const r = await fetch('/mundial/api/reset', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lote, empresa_id: currentEmpresaId }) });
+    const d = await r.json(); alert(d.message);
+    clearLogs(); refreshFiles(); setStatus('idle');
+    document.getElementById('btnStart').disabled = false;
+    if (polling) clearTimeout(polling); polling = null; logCount = 0;
+    updateStats({total:0, descargadas:0, errores:0});
+  }
+});
+
+// ── Botón Lista → muestra consecutivos en cola ───────────────────────────────
+document.getElementById('btnProgreso').addEventListener('click', () => {
+  openProgresoModal();
+});
+// Para ver la lista de consecutivos en cola (acceso directo si se necesita)
+function openListaModal() {
+  const vals = parseValores(getValoresTexto());
+  const modal = document.getElementById('listaModal');
+  const info = document.getElementById('modalInfo');
+  const ul = document.getElementById('modalLista');
+  ul.innerHTML = '';
+  if (!vals.length) { info.textContent = 'No hay consecutivos cargados.'; }
+  else {
+    info.innerHTML = `<strong style="color:var(--accent)">${vals.length}</strong> consecutivos en cola`;
+    vals.forEach(v => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span>${escHtml(v)}</span><span class="tag">${detectarTipo(v)}</span>`;
+      ul.appendChild(li);
+    });
+  }
+  modal.style.display = 'flex';
+}
+function closeModal() { document.getElementById('listaModal').style.display = 'none'; }
+function copiarLista() {
+  const items = document.querySelectorAll('#modalLista li span:first-child');
+  const txt = Array.from(items).map(s => s.textContent).join('\n');
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(()=>alert('Lista copiada.')).catch(()=>alert('No se pudo copiar.'));
+}
+window.onclick = (e) => { if (e.target === document.getElementById('listaModal')) closeModal(); };
+
+// ── Historial de progreso ────────────────────────────────────────────────────
+async function openProgresoModal() {
+  document.getElementById('progresoModal').style.display = 'flex';
+  const body = document.getElementById('progresoModalBody');
+  body.innerHTML = '<p style="color:var(--text-secondary)">Cargando...</p>';
+  try {
+    const lote = document.getElementById('lote').value.trim();
+    const url = '/mundial/api/progreso' + (lote ? '?lote=' + encodeURIComponent(lote) : '');
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!d.progreso || !d.progreso.length) {
+      body.innerHTML = '<p style="color:var(--text-secondary)">Sin historial de progreso guardado.</p>';
+      return;
+    }
+    let html = '';
+    for (const p of d.progreso) {
+      html += `<div style="margin-bottom:14px;padding:10px 12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border);">
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px;">
+          <i class="fas fa-folder" style="color:var(--accent);margin-right:5px;"></i>
+          ${escHtml(p.lote)}${p.ips ? ' / ' + escHtml(p.ips) : ''}
+          <span style="font-weight:400;color:var(--text-secondary);margin-left:6px;">(${p.total} carta${p.total!==1?'s':''})</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+          ${p.completadas.map(c => `<span style="font-size:11px;padding:2px 7px;background:rgba(10,153,214,0.1);color:var(--accent);border-radius:4px;">${escHtml(c)}</span>`).join('')}
+        </div>
+      </div>`;
+    }
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<p style="color:#e74c3c">Error al cargar progreso: ${e.message}</p>`;
+  }
+}
+function closeProgresoModal() {
+  document.getElementById('progresoModal').style.display = 'none';
+}
+window.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('progresoModal')) closeProgresoModal();
+});
+
+// ── Pestañas ─────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Cruce de Excel ────────────────────────────────────────────────────────────
+let _cruceResultado = [];
+
+function setFileName(input, labelId) {
+  const el = document.getElementById(labelId);
+  if (input.files[0]) {
+    el.textContent = input.files[0].name;
+    el.classList.add('loaded');
+  } else {
+    el.textContent = 'Ningún archivo seleccionado';
+    el.classList.remove('loaded');
+  }
+}
+
+function crucLog(msg, color) {
+  const el = document.getElementById('cruceLog');
+  const line = document.createElement('div');
+  line.style.color = color || '#7ee787';
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function ejecutarCruce() {
+  const mundial = document.getElementById('mundialFile').files[0];
+  const cartera = document.getElementById('carteraFile').files[0];
+  const esculapio = document.getElementById('esculapioFile').files[0];
+
+  if (!mundial || !cartera || !esculapio) {
+    alert('Carga los 3 archivos Excel antes de ejecutar el cruce.');
+    return;
+  }
+
+  document.getElementById('cruceLog').innerHTML = '';
+  document.getElementById('cruceChips').innerHTML = '';
+  document.getElementById('cruceBotones').style.display = 'none';
+  document.getElementById('cruceConteo').textContent = '';
+  crucLog('Procesando archivos...');
+
+  const btn = document.getElementById('btnCruce');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+
+  try {
+    const fd = new FormData();
+    fd.append('mundial', mundial);
+    fd.append('cartera', cartera);
+    fd.append('esculapio', esculapio);
+
+    const r = await fetch('/mundial/api/cruce', { method: 'POST', body: fd });
+    const d = await r.json();
+
+    if (!d.ok) {
+      crucLog('ERROR: ' + d.error, '#f87171');
+      return;
+    }
+
+    _cruceResultado = d.consecutivos;
+    const chips = document.getElementById('cruceChips');
+    const conteo = document.getElementById('cruceConteo');
+
+    crucLog(`✔ Mundial: ${d.stats.mundial} facturas`);
+    crucLog(`✔ Cartera: ${d.stats.cartera} facturas (${d.stats.sin_glosa} sin glosa o sin cruce)`);
+    crucLog(`✔ Esculapio: ${d.stats.esculapio} facturas`);
+    crucLog(`─────────────────────────────`);
+    crucLog(`Resultado: ${_cruceResultado.length} consecutivo(s) para descargar`);
+
+    if (_cruceResultado.length === 0) {
+      crucLog('No hay consecutivos que cumplan ambas condiciones.', '#fbbf24');
+    } else {
+      _cruceResultado.forEach(c => {
+        const span = document.createElement('span');
+        span.className = 'cruce-chip ' + (c.startsWith('DEV') ? 'chip-dev' : 'chip-liq');
+        span.textContent = c;
+        chips.appendChild(span);
+      });
+      conteo.textContent = `${_cruceResultado.length} consecutivos`;
+      document.getElementById('cruceBotones').style.display = 'block';
+    }
+
+  } catch(e) {
+    crucLog('Error de red: ' + e.message, '#f87171');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-code-branch"></i> Ejecutar cruce';
+  }
+}
+
+function cargarCruceAlDescargador() {
+  if (!_cruceResultado.length) return;
+  // Poner los consecutivos en el textarea y cambiar a la pestaña descargador
+  document.getElementById('valores').value = _cruceResultado.join('\n');
+  // Disparar el evento input para que detecte los chips
+  document.getElementById('valores').dispatchEvent(new Event('input'));
+  // Cambiar a pestaña descargador
+  document.querySelector('.tab-btn').click();
+  setTimeout(() => {
+    document.getElementById('valores').scrollIntoView({ behavior: 'smooth' });
+  }, 200);
+}
+
+function descargarCruceExcel() {
+  if (!_cruceResultado.length) return;
+  const rows = [['Consecutivo'], ..._cruceResultado.map(c => [c])];
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'consecutivos_cruce.csv';
+  a.click();
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+updatePathDisplay();
+refreshFiles();
+</script>
+</body>
+</html>

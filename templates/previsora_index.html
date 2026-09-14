@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<title>Activa IT — Descargador Cartas Glosa Previsora</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<style>
+  :root {
+    --bg-body: #f5f7fc;
+    --bg-card: #ffffff;
+    --accent: #4f46e5;
+    --accent-light: #ede9fe;
+    --accent-hover: #4338ca;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --error: #ef4444;
+    --warning: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg-body);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .header-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: transparent;
+  }
+  .header-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  header h1 { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+  header p { font-size: 0.7rem; color: var(--text-secondary); }
+
+  /* Main Layout - Compacto */
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px 24px;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8fafc;
+  }
+  .card-header .icon {
+    width: 24px;
+    height: 24px;
+    background: var(--accent-light);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: var(--accent);
+  }
+
+  .card-body { padding: 10px 16px; }
+
+  /* Form Groups */
+  .form-group { margin-bottom: 8px; }
+  label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+
+  .input-field {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    transition: all 0.2s;
+    outline: none;
+  }
+  .input-field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  }
+  .input-field::placeholder { color: #94a3b8; }
+
+  /* Period Grid - Compacto */
+  .periodo-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+  .periodo-btn {
+    padding: 7px 4px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg-card);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .periodo-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+  .periodo-btn.active {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: white;
+  }
+
+  .periodo-hint {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .periodo-hint i { color: var(--accent); font-size: 0.65rem; }
+
+  /* Path Display */
+  .path-display {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    font-family: monospace;
+  }
+
+  /* Upload */
+  .upload-area {
+    background: #f8fafc;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .upload-area:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .upload-area input[type="file"] { display: none; }
+  .upload-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .upload-label:hover {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .btn-upload {
+    margin-top: 8px;
+    width: 100%;
+    padding: 8px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    color: white;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-upload:hover { transform: translateY(-1px); }
+
+  /* Alert */
+  .alert {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid;
+  }
+  .alert.info {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: rgba(79, 70, 229, 0.3);
+  }
+
+  /* Primary Button */
+  .btn-primary {
+    width: 100%;
+    padding: 11px 18px;
+    background: linear-gradient(135deg, var(--success), #059669);
+    color: white;
+    border: none;
+    border-radius: 9px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    box-shadow: 0 3px 10px rgba(16, 185, 129, 0.2);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Button Group */
+  .button-group {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .btn-secondary {
+    flex: 1;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .btn-stop {
+    background: linear-gradient(135deg, var(--error), #dc2626);
+    color: white;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15);
+  }
+  .btn-stop:hover { transform: translateY(-1px); }
+  .btn-reset {
+    background: #f1f5f9;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .btn-reset:hover { background: #e2e8f0; }
+  .btn-progreso {
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    color: white;
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.15);
+  }
+  .btn-progreso:hover { transform: translateY(-1px); }
+
+  /* Stats Bar - Compacto */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat-box {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 10px 8px;
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+  .stat-box .val {
+    font-size: 1.4rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .stat-box.total .val { color: var(--accent); }
+  .stat-box.ok .val { color: var(--success); }
+  .stat-box.error .val { color: var(--error); }
+  .stat-box .lbl {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  /* Progress */
+  .progress-wrap { margin-bottom: 12px; }
+  .progress-bar-bg {
+    height: 6px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success), #34d399);
+    border-radius: 6px;
+    transition: width 0.4s ease;
+    width: 0%;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
+  }
+  .progress-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    text-align: center;
+    font-weight: 500;
+  }
+
+  /* Status Badge */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 50px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .status-badge.idle {
+    background: #f1f5f9;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .status-badge.running {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid rgba(79, 70, 229, 0.3);
+  }
+  .status-badge.done {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+  }
+  .status-badge.error {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  }
+
+  .spinner {
+    width: 8px;
+    height: 8px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Log Console - Compacto */
+  .log-console {
+    background: #0f172a;
+    border-radius: 8px;
+    padding: 10px 12px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.68rem;
+    line-height: 1.5;
+    color: #94a3b8;
+  }
+  .log-console::-webkit-scrollbar { width: 4px; }
+  .log-console::-webkit-scrollbar-track { background: #1e293b; }
+  .log-console::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+
+  .log-line { display: flex; gap: 7px; padding: 1px 0; }
+  .log-ts { color: #475569; flex-shrink: 0; font-size: 0.6rem; }
+  .log-msg { flex: 1; word-break: break-word; }
+  .log-line.info .log-msg { color: #94a3b8; }
+  .log-line.success .log-msg { color: #34d399; }
+  .log-line.error .log-msg { color: #f87171; }
+  .log-line.warn .log-msg { color: #fbbf24; }
+
+  /* File List */
+  .file-list { max-height: 130px; overflow-y: auto; }
+  .file-list::-webkit-scrollbar { width: 3px; }
+  .file-list::-webkit-scrollbar-track { background: var(--bg-card); }
+  .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-item:last-child { border-bottom: none; }
+  .file-item:hover { background: #f8fafc; }
+  .file-item .icon {
+    width: 24px;
+    height: 24px;
+    background: var(--accent-light);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 0.65rem;
+    flex-shrink: 0;
+  }
+  .file-item .name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-item .size { color: var(--text-secondary); font-size: 0.6rem; flex-shrink: 0; }
+  .file-item a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.65rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: var(--accent-light);
+    transition: all 0.15s;
+  }
+  .file-item a:hover { background: #ddd6fe; text-decoration: none; }
+  .file-empty { color: var(--text-secondary); font-size: 0.7rem; text-align: center; padding: 20px 0; }
+
+  /* Clear Button */
+  .btn-clear {
+    background: #f1f5f9;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: auto;
+  }
+  .btn-clear:hover { background: #e2e8f0; color: var(--text-primary); }
+
+  /* Modal */
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.4);
+    backdrop-filter: blur(2px);
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-content {
+    background: var(--bg-card);
+    border-radius: 12px;
+    width: 500px;
+    max-width: 90%;
+    max-height: 70%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+  }
+  .modal-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    color: white;
+  }
+  .modal-header h3 { margin: 0; font-size: 0.85rem; font-weight: 600; }
+  .modal-close {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+    color: white;
+    transition: background 0.15s;
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.3); }
+  .modal-body {
+    padding: 14px 16px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .modal-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .factura-lista {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .factura-lista li {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+  }
+  .factura-lista li:hover { background: #f8fafc; }
+  .btn-modal {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-modal.green { background: var(--success); color: white; }
+  .btn-modal.gray { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-modal.red { background: var(--error); color: white; }
+  .btn-modal:hover { transform: translateY(-1px); }
+
+  /* Error Alert */
+  #errorAlert { display: none; }
+
+  @media (max-width: 750px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .volver-panel { margin-left: auto; text-decoration: none; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; transition: all 0.15s; }
+  .volver-panel:hover { background: rgba(0,0,0,0.05); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-icon"><img src="/static/logo_previsora.png" alt="Previsora"></div>
+  <div>
+    <h1>Descargador Cartas Glosa — Previsora SOAT</h1>
+    <p>Activa IT · Automatización de descarga de archivos soporte</p>
+  </div>
+  <a href="/" class="volver-panel"><i class="fas fa-arrow-left"></i> Panel principal</a>
+</header>
+
+<main>
+
+  <!-- Panel izquierdo: Configuración -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-cog"></i></span> Panel de Control
+      </div>
+      <div class="card-body">
+
+        <div class="form-group">
+          <label>Usuario</label>
+          <input type="text" id="usuario" class="input-field" placeholder="Ej: PREV900600550" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="password" class="input-field" placeholder="Contraseña" autocomplete="current-password">
+        </div>
+
+        <div class="form-group">
+          <label>Período a revisar</label>
+          <div class="periodo-grid" id="periodoGrid"></div>
+          <input type="text" id="periodoCustom" class="input-field" placeholder="May26 o Dic25-May26" style="margin-top: 6px;">
+          <div class="periodo-hint">
+            <i class="fas fa-info-circle"></i>
+            <span>Escribe o usa botones. MMMYY (ej: Ene26). Rangos: Dic25-May26</span>
+          </div>
+        </div>
+
+        <div class="form-group" id="manualAddBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
+          <div id="manualAddToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+            <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0;">Agregar manualmente <span id="manualCountInline" style="color:var(--success);"></span></label>
+            <i id="manualAddChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+          </div>
+          <div id="manualAddContent" style="display:none; margin-top:6px;">
+            <textarea id="manualFactura" class="input-field" placeholder="Escribe o pega aquí" rows="1" style="font-size:0.75rem; resize:none; overflow-y:auto;"></textarea>
+            <button type="button" id="btnManualAdd" class="btn-primary" style="width:100%; margin-top:6px; font-size:0.75rem; padding:7px;">
+              <i class="fas fa-plus"></i> Agregar factura
+            </button>
+            <div id="manualDetalle" style="display:none; margin-top:6px; max-height:120px; overflow-y:auto; border:1px solid var(--border); border-radius:6px;"></div>
+          </div>
+        </div>
+
+        <div class="form-group" id="downloadPathBox">
+          <div id="downloadPathToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+            <label style="margin:0;">Carpeta de descarga (opcional)</label>
+            <i id="downloadPathChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+          </div>
+          <div id="downloadPathContent" style="display:none; margin-top:6px;">
+            <input type="text" id="downloadPath" class="input-field" placeholder="Dejar vacío para usar por defecto">
+            <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[periodo]/</div>
+          </div>
+        </div>
+
+        <!-- Importar lista -->
+        <div class="form-group">
+          <label>📎 Importar lista de facturas</label>
+          <div class="upload-area">
+            <label for="uploadFile" class="upload-label">
+              <i class="fas fa-file-import"></i> Seleccionar archivo
+            </label>
+            <input type="file" id="uploadFile" accept=".csv,.xlsx,.xls">
+            <div id="uploadFileName" style="font-size:0.65rem; color:var(--text-secondary); margin-top:5px;"></div>
+            <button type="button" id="btnUpload" class="btn-upload">
+              <i class="fas fa-upload"></i> Cargar lista
+            </button>
+          </div>
+          <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
+        </div>
+
+        <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="reintentosLargos" checked style="width:16px; height:16px; margin:0;">
+          <label for="reintentosLargos" style="margin:0; cursor:pointer; font-weight:normal; font-size:0.8rem;">
+            Reintentos largos si persisten errores (recomendado)
+          </label>
+        </div>
+
+        <div class="alert info">
+          <i class="fas fa-info-circle"></i>
+          <span>Descarga: <strong>Envios_D</strong> y <strong>ActaDevolucion</strong></span>
+        </div>
+
+        <div class="form-group" id="identidadBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
+          <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0; display:block; margin-bottom:6px;">¿Quién eres?</label>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="chip-identidad" data-id="SaludNet" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Salud Net</button>
+            <button type="button" class="chip-identidad" data-id="Campbell" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Campbell</button>
+          </div>
+          <input type="text" id="identidadManual" placeholder="" autocomplete="off"
+                 style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+        </div>
+
+        <button class="btn-primary" id="btnStart" onclick="startJob()">
+          <i class="fas fa-rocket"></i> Iniciar descarga
+        </button>
+
+        <div class="button-group">
+          <button class="btn-secondary btn-stop" id="btnStop">
+            <i class="fas fa-stop"></i> Detener
+          </button>
+          <button class="btn-secondary btn-reset" id="btnReset">
+            <i class="fas fa-redo"></i> Reiniciar
+          </button>
+          <button class="btn-secondary btn-progreso" id="btnProgreso">
+            <i class="fas fa-list-check"></i> Progreso
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel derecho -->
+  <div style="display:flex; flex-direction:column; gap:14px;">
+
+    <!-- Progreso -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-chart-line"></i></span> Progreso
+      </div>
+      <div class="card-body">
+
+        <div id="statusBadge" class="status-badge idle">
+          <span id="statusDot" style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+          <span id="statusText">En espera</span>
+        </div>
+
+        <div class="stats-bar">
+          <div class="stat-box total">
+            <div class="val" id="statTotal">0</div>
+            <div class="lbl">Encontradas</div>
+          </div>
+          <div class="stat-box ok">
+            <div class="val" id="statOk">0</div>
+            <div class="lbl">Descargadas</div>
+          </div>
+          <div class="stat-box error">
+            <div class="val" id="statError">0</div>
+            <div class="lbl">Errores</div>
+          </div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+          <div class="progress-label" id="progressLabel">0 de 0 facturas procesadas</div>
+        </div>
+
+        <div id="errorAlert" class="alert" style="display:none; background:#fee2e2; color:#991b1b; border-color:#fecaca;"></div>
+
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-terminal"></i></span> Log de ejecución
+        <button onclick="clearLogs()" class="btn-clear">Limpiar</button>
+      </div>
+      <div class="card-body" style="padding:8px;">
+        <div class="log-console" id="logConsole">
+          <div class="log-line info"><span class="log-ts">--:--:--</span><span class="log-msg">Listo para iniciar. Configure los parámetros y presione "Iniciar descarga".</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Archivos -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon"><i class="fas fa-folder-open"></i></span> Archivos descargados
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button onclick="refreshFiles()" class="btn-clear" title="Actualizar">↻</button>
+          <button onclick="deleteAllFiles()" class="btn-clear" title="Borrar soportes (conserva progreso)" style="color:#e74c3c;font-size:14px;">🗑</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:8px;">
+        <div class="file-list" id="fileList">
+          <div class="file-empty">Sin archivos descargados aún.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Modal Progreso con botón de limpiar progreso -->
+<div id="progresoModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>📋 Facturas completadas</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modalInfo" style="margin-bottom: 8px; color: var(--text-secondary);">Cargando...</p>
+      <ul id="modalLista" class="factura-lista"></ul>
+    </div>
+    <div class="modal-footer">
+      <button onclick="exportarProgresoExcel()" class="btn-modal green">
+        <i class="fas fa-file-excel"></i> Exportar
+      </button>
+      <button onclick="copiarLista()" class="btn-modal gray">
+        <i class="fas fa-copy"></i> Copiar
+      </button>
+      <button onclick="limpiarProgreso()" class="btn-modal red">
+        <i class="fas fa-trash-alt"></i> Limpiar progreso
+      </button>
+      <button onclick="closeModal()" class="btn-modal gray">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Períodos con soporte para rangos ─────────────────────────────────────────
+const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+let selectedPeriodo = "";
+
+function parsePeriodo(input) {
+    input = input.trim();
+    if (!input) return [];
+    if (input.includes('-')) {
+        const parts = input.split('-').map(p => p.trim());
+        if (parts.length === 2) {
+            return generarRangoPeriodos(parts[0], parts[1]);
+        }
+    }
+    if (validarPeriodo(input)) {
+        return [input];
+    }
+    return [];
+}
+
+function validarPeriodo(p) {
+    if (!p || p.length < 5) return false;
+    const mes = p.substring(0, 3);
+    const anio = p.substring(3);
+    return MESES.includes(mes) && /^\d{2}$/.test(anio);
+}
+
+function generarRangoPeriodos(inicio, fin) {
+    if (!validarPeriodo(inicio) || !validarPeriodo(fin)) return [];
+    const mesInicio = MESES.indexOf(inicio.substring(0, 3));
+    const anioInicio = parseInt(inicio.substring(3));
+    const mesFin = MESES.indexOf(fin.substring(0, 3));
+    const anioFin = parseInt(fin.substring(3));
+    const fechaInicio = anioInicio * 100 + mesInicio;
+    const fechaFin = anioFin * 100 + mesFin;
+    if (fechaFin < fechaInicio) return [];
+    const periodos = [];
+    let anio = anioInicio;
+    let mes = mesInicio;
+    while (true) {
+        const anioStr = String(anio).padStart(2, '0');
+        periodos.push(MESES[mes] + anioStr);
+        if (anio === anioFin && mes === mesFin) break;
+        mes++;
+        if (mes > 11) {
+            mes = 0;
+            anio++;
+        }
+    }
+    return periodos;
+}
+
+function buildPeriodGrid() {
+    const grid = document.getElementById("periodoGrid");
+    const now = new Date();
+    const periods = [];
+    for (let i = 0; i < 6; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const label = MESES[d.getMonth()] + String(d.getFullYear()).slice(2);
+        periods.push(label);
+    }
+    grid.innerHTML = periods.map(p =>
+        `<button class="periodo-btn" onclick="selectPeriodo('${p}')">${p}</button>`
+    ).join("");
+    selectPeriodo(periods[0]);
+}
+
+function selectPeriodo(p) {
+    selectedPeriodo = p;
+    document.getElementById("periodoCustom").value = p;
+    document.querySelectorAll(".periodo-btn").forEach(b => {
+        b.classList.toggle("active", b.textContent === p);
+    });
+    updatePathDisplay();
+}
+
+function updatePathDisplay() {
+    const custom = document.getElementById("downloadPath").value.trim();
+    const display = custom ? `📂 ${custom}` : `📂 Se usará: downloads/${selectedPeriodo || "[periodo]"}/`;
+    document.getElementById("pathDisplay").textContent = display;
+}
+
+document.getElementById("periodoCustom").addEventListener("input", function() {
+    const val = this.value.trim();
+    if (validarPeriodo(val)) {
+        selectedPeriodo = val;
+        document.querySelectorAll(".periodo-btn").forEach(b => {
+            b.classList.toggle("active", b.textContent === val);
+        });
+    }
+    updatePathDisplay();
+});
+
+document.getElementById("downloadPath").addEventListener("input", updatePathDisplay);
+
+document.getElementById("uploadFile").addEventListener("change", function() {
+    document.getElementById("uploadFileName").textContent = this.files[0]?.name || "";
+});
+
+// ── Job ─────────────────────────────────────────────────────────────────────────
+let polling = null;
+let logCount = 0;
+let identidadActual = localStorage.getItem("identidadUsuario") || "";
+
+function pintarIdentidad() {
+  document.querySelectorAll(".chip-identidad").forEach(btn => {
+    const activo = btn.dataset.id === identidadActual;
+    btn.style.background = activo ? "var(--accent)" : "var(--bg-card)";
+    btn.style.color = activo ? "#fff" : "";
+    btn.style.borderColor = activo ? "var(--accent)" : "var(--border)";
+  });
+  const manual = document.getElementById("identidadManual");
+  const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
+  manual.value = esChip ? "" : identidadActual;
+}
+
+document.querySelectorAll(".chip-identidad").forEach(btn => {
+  btn.addEventListener("click", () => {
+    identidadActual = btn.dataset.id;
+    localStorage.setItem("identidadUsuario", identidadActual);
+    pintarIdentidad();
+  });
+});
+
+document.getElementById("identidadManual").addEventListener("change", (e) => {
+  const valor = e.target.value.trim();
+  if (valor) {
+    identidadActual = valor;
+    localStorage.setItem("identidadUsuario", identidadActual);
+    pintarIdentidad();
+  }
+});
+
+pintarIdentidad();
+
+let manualEntries = [];
+
+function _parsearPegado(texto) {
+  return texto
+    .split(/[\n,;]+/)
+    .map(l => l.replace(/^[\s*\-•·]+/, "").trim())
+    .filter(l => l.length > 0);
+}
+
+function renderManualEntries() {
+  const countInline = document.getElementById("manualCountInline");
+  const detalle = document.getElementById("manualDetalle");
+  if (manualEntries.length === 0) {
+    countInline.textContent = "";
+    detalle.style.display = "none";
+    detalle.innerHTML = "";
+    return;
+  }
+  countInline.textContent = `(${manualEntries.length})`;
+  detalle.style.display = "block";
+  detalle.innerHTML = "";
+  manualEntries.forEach((f, i) => {
+    const fila = document.createElement("div");
+    fila.style.cssText = `display:flex; align-items:center; justify-content:space-between; padding:5px 8px; font-size:0.7rem; ${i > 0 ? "border-top:1px solid var(--border);" : ""}`;
+    fila.innerHTML = `<span>${f}</span>`;
+    const btn = document.createElement("i");
+    btn.className = "fas fa-times";
+    btn.style.cssText = "cursor:pointer; color:var(--text-secondary);";
+    btn.onclick = () => { manualEntries.splice(i, 1); renderManualEntries(); };
+    fila.appendChild(btn);
+    detalle.appendChild(fila);
+  });
+}
+
+document.getElementById("downloadPathToggle").addEventListener("click", () => {
+  const content = document.getElementById("downloadPathContent");
+  const chevron = document.getElementById("downloadPathChevron");
+  const abierto = content.style.display === "block";
+  content.style.display = abierto ? "none" : "block";
+  chevron.className = abierto ? "fas fa-chevron-down" : "fas fa-chevron-up";
+});
+
+document.getElementById("manualAddToggle").addEventListener("click", () => {
+  const content = document.getElementById("manualAddContent");
+  const chevron = document.getElementById("manualAddChevron");
+  const abierto = content.style.display === "block";
+  content.style.display = abierto ? "none" : "block";
+  chevron.className = abierto ? "fas fa-chevron-down" : "fas fa-chevron-up";
+});
+
+document.getElementById("btnManualAdd").addEventListener("click", () => {
+  const nuevas = _parsearPegado(document.getElementById("manualFactura").value);
+  if (nuevas.length === 0) {
+    alert("Escribe o pega al menos un número de factura.");
+    return;
+  }
+  manualEntries.push(...nuevas);
+  document.getElementById("manualFactura").value = "";
+  renderManualEntries();
+});
+let currentEmpresaId = sessionStorage.getItem("currentEmpresaId_previsora") || "";
+
+function setEmpresaId(id) {
+    currentEmpresaId = id || "";
+    if (currentEmpresaId) sessionStorage.setItem("currentEmpresaId_previsora", currentEmpresaId);
+}
+
+async function startJob() {
+    const usuario = document.getElementById("usuario").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const periodoInput = document.getElementById("periodoCustom").value.trim();
+    const dlPath = document.getElementById("downloadPath").value.trim();
+
+    if (!usuario || !password || !periodoInput) {
+        alert("Por favor completa usuario, contraseña y período.");
+        return;
+    }
+
+    const periodos = parsePeriodo(periodoInput);
+    if (periodos.length === 0) {
+        alert("Formato de período inválido. Use MMMYY (ej: May26) o rango MMMYY-MMMYY (ej: Dic25-May26).");
+        return;
+    }
+
+    document.getElementById("btnStart").disabled = true;
+    document.getElementById("logConsole").innerHTML = "";
+    logCount = 0;
+    setStatus("running");
+    document.getElementById("errorAlert").style.display = "none";
+
+    const fd = new FormData();
+    fd.append("usuario", usuario);
+    fd.append("password", password);
+    fd.append("periodo", periodoInput);
+    fd.append("identidad", identidadActual);
+    fd.append("download_path", dlPath);
+    fd.append("reintentos_largos", document.getElementById("reintentosLargos").checked ? "true" : "false");
+    const fi = document.getElementById("uploadFile").files[0];
+    if (fi) fd.append("file", fi);
+    if (manualEntries.length > 0) fd.append("manual_entries", JSON.stringify(manualEntries));
+
+    const resp = await fetch("/previsora/api/start", {
+        method: "POST",
+        body: fd
+    });
+    const data = await resp.json();
+
+    if (!data.ok) {
+        setStatus("error");
+        showError(data.error);
+        document.getElementById("btnStart").disabled = false;
+        return;
+    }
+    setEmpresaId(data.empresa_id);
+
+    const periodoInfo = periodos.length > 1
+        ? `Rango: ${periodos[0]} → ${periodos[periodos.length - 1]} (${periodos.length} períodos)`
+        : `Período: ${periodos[0]}`;
+    addLog({ts: "--:--:--", msg: `🚀 Proceso iniciado | ${periodoInfo} | Destino: ${data.download_path}`, level: "info"});
+    if (polling) clearInterval(polling);
+    polling = setInterval(pollStatus, 1500);
+}
+
+async function pollStatus() {
+    try {
+        const resp = await fetch(`/previsora/api/logs?since=${logCount}&empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+        const data = await resp.json();
+        data.logs.forEach(l => addLog(l));
+        logCount += data.logs.length;
+        const sr = await fetch(`/previsora/api/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`);
+        const s = await sr.json();
+        updateStats(s.stats);
+        if (!s.running) {
+            clearInterval(polling);
+            polling = null;
+            if (s.error) {
+                setStatus("error");
+                showError(s.error);
+            } else {
+                setStatus("done");
+            }
+            document.getElementById("btnStart").disabled = false;
+            refreshFiles();
+            descargarExcelErroresSiHay(s.errores_excel_url);
+        }
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+function descargarExcelErroresSiHay(url) {
+    // Auto-descarga el Excel de errores SOLO si el proceso terminó con al
+    // menos una factura fallida (el backend no manda esta URL si no hubo
+    // ningún error). Cualquier problema aquí queda contenido en este bloque
+    // y no afecta el resto del panel.
+    if (!url) return;
+    try {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (e) {
+        console.error("No se pudo autodescargar el Excel de errores:", e);
+    }
+}
+
+function updateStats(stats) {
+    document.getElementById("statTotal").textContent = stats.total;
+    document.getElementById("statOk").textContent = stats.descargadas;
+    document.getElementById("statError").textContent = stats.errores;
+    const pct = stats.total > 0
+        ? Math.round(((stats.descargadas + stats.errores) / stats.total) * 100)
+        : 0;
+    document.getElementById("progressBar").style.width = pct + "%";
+    document.getElementById("progressLabel").textContent =
+        `${stats.descargadas + stats.errores} de ${stats.total} facturas procesadas`;
+}
+
+function setStatus(st) {
+    const badge = document.getElementById("statusBadge");
+    const txt = document.getElementById("statusText");
+    badge.className = "status-badge " + st;
+    const map = {idle:"En espera", running:"Procesando...", done:"Completado ✓", error:"Error"};
+    if (st === "running") {
+        txt.innerHTML = `<span class="spinner"></span> Procesando...`;
+    } else {
+        txt.textContent = map[st] || st;
+    }
+}
+
+function showError(msg) {
+    const el = document.getElementById("errorAlert");
+    el.style.display = "flex";
+    el.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${msg}`;
+}
+
+// ── Logs ─────────────────────────────────────────────────────────────────────
+function addLog(l) {
+    const c = document.getElementById("logConsole");
+    const div = document.createElement("div");
+    div.className = "log-line " + (l.level || "info");
+    div.innerHTML = `<span class="log-ts">${l.ts}</span><span class="log-msg">${escHtml(l.msg)}</span>`;
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
+}
+
+function clearLogs() {
+    document.getElementById("logConsole").innerHTML = "";
+    logCount = 0;
+    fetch(`/previsora/api/logs?empresa_id=${encodeURIComponent(currentEmpresaId)}`, { method: 'DELETE' }).catch(console.error);
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Archivos ─────────────────────────────────────────────────────────────────
+async function deleteAllFiles() {
+    const periodo = document.getElementById("periodoCustom").value.trim();
+    const label = periodo ? `del período "${periodo}"` : "de la carpeta de descargas";
+    if (!confirm(`¿Borrar soportes ${label}?\n\nSe eliminarán los PDFs/ZIPs descargados.\nEl progreso de descarga se conservará.`)) return;
+    const resp = await fetch(`/previsora/api/files?periodo=${encodeURIComponent(periodo)}`, { method: "DELETE" });
+    const data = await resp.json();
+    if (data.ok) {
+        await refreshFiles();
+        alert(`✅ ${data.message}`);
+    } else {
+        alert(`❌ Error: ${data.error}`);
+    }
+}
+
+async function refreshFiles() {
+    const periodo = document.getElementById("periodoCustom").value.trim();
+    const resp = await fetch(`/previsora/api/files?periodo=${encodeURIComponent(periodo)}`);
+    const data = await resp.json();
+    const list = document.getElementById("fileList");
+    if (!data.files.length) {
+        list.innerHTML = '<div class="file-empty">Sin archivos descargados aún.</div>';
+        return;
+    }
+    list.innerHTML = data.files.map(f => `
+        <div class="file-item">
+            <span class="icon"><i class="fas fa-file-pdf"></i></span>
+            <span class="name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+            <span class="size">${fmtSize(f.size)}</span>
+            <a href="/previsora/downloads/${f.periodo ? f.periodo+'/' : ''}${encodeURIComponent(f.name)}" download>⬇</a>
+        </div>
+    `).join("");
+}
+
+function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + " KB";
+    return (bytes/1024/1024).toFixed(1) + " MB";
+}
+
+// ── Upload ─────────────────────────────────────────────────────────────────────
+document.getElementById("btnUpload").addEventListener("click", async () => {
+    const fileInput = document.getElementById("uploadFile");
+    const file = fileInput.files[0];
+    if (!file) {
+        alert("Selecciona un archivo CSV o Excel primero.");
+        return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("usuario", document.getElementById("usuario").value.trim());
+    const res = await fetch("/previsora/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    const statusDiv = document.getElementById("uploadStatus");
+    if (data.ok) {
+        statusDiv.innerHTML = `<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ${data.count} facturas cargadas.</span>`;
+    } else {
+        statusDiv.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
+    }
+});
+
+// ── Botones ─────────────────────────────────────────────────────────────────
+document.getElementById("btnStop").addEventListener("click", async () => {
+    const resp = await fetch(`/previsora/api/stop?empresa_id=${encodeURIComponent(currentEmpresaId)}`, { method: "POST" });
+    const data = await resp.json();
+    alert(data.message);
+});
+
+document.getElementById("btnReset").addEventListener("click", async () => {
+    const periodo = document.getElementById("periodoCustom").value.trim();
+    if (!periodo) {
+        alert("No hay período seleccionado.");
+        return;
+    }
+    if (confirm(`¿Reiniciar el período ${periodo}?\n\nSe borrará el progreso de descarga.`)) {
+        const resp = await fetch("/previsora/api/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ periodo: periodo, empresa_id: currentEmpresaId })
+        });
+        const data = await resp.json();
+        alert(data.message);
+        clearLogs();
+        refreshFiles();
+        setStatus("idle");
+        document.getElementById("btnStart").disabled = false;
+        if (polling) clearInterval(polling);
+        polling = null;
+        logCount = 0;
+        document.getElementById("uploadStatus").innerHTML = "";
+    }
+});
+
+// ── Nueva función: limpiar progreso (desde el modal) ────────────────────────
+async function limpiarProgreso() {
+    const periodo = document.getElementById("periodoCustom").value.trim();
+    if (!periodo) {
+        alert("No hay período seleccionado.");
+        return;
+    }
+    if (confirm(`¿Reiniciar el progreso del período "${periodo}"?\n\nSe borrará el archivo de progreso (progreso.json), pero se conservarán los PDFs ya descargados.`)) {
+        const resp = await fetch("/previsora/api/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ periodo: periodo, empresa_id: currentEmpresaId })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            alert(data.message);
+            closeModal();
+            clearLogs();
+            refreshFiles();
+            setStatus("idle");
+            document.getElementById("btnStart").disabled = false;
+            if (polling) clearInterval(polling);
+            polling = null;
+            logCount = 0;
+            document.getElementById("uploadStatus").innerHTML = "";
+            updateStats({total:0, descargadas:0, errores:0});
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    }
+}
+
+// ── Modal Progreso ──────────────────────────────────────────────────────────
+async function verProgreso() {
+    const periodo = document.getElementById("periodoCustom").value.trim();
+    if (!periodo) {
+        alert("Selecciona un período primero.");
+        return;
+    }
+    const modal = document.getElementById("progresoModal");
+    const modalInfo = document.getElementById("modalInfo");
+    const modalLista = document.getElementById("modalLista");
+    modalLista.innerHTML = "";
+    modalInfo.innerHTML = "Cargando...";
+    modal.style.display = "flex";
+
+    try {
+        const resp = await fetch(`/previsora/api/progreso?periodo=${encodeURIComponent(periodo)}`);
+        const data = await resp.json();
+        if (!data.ok) {
+            modalInfo.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
+            return;
+        }
+        if (data.completadas && data.completadas.length > 0) {
+            modalInfo.innerHTML = `<strong style="color: var(--success);">${data.cantidad}</strong> facturas completadas`;
+            const ul = modalLista;
+            data.completadas.forEach(f => {
+                const li = document.createElement("li");
+                li.textContent = f;
+                ul.appendChild(li);
+            });
+        } else {
+            modalInfo.innerHTML = `<span style="color: var(--text-secondary);">No hay facturas completadas.</span>`;
+            modalLista.innerHTML = '<li style="color:var(--text-secondary);">Ninguna</li>';
+        }
+    } catch (err) {
+        modalInfo.innerHTML = `<span style="color: var(--error);">Error: ${err.message}</span>`;
+    }
+}
+
+document.getElementById("btnProgreso").addEventListener("click", verProgreso);
+
+function closeModal() {
+    document.getElementById("progresoModal").style.display = "none";
+}
+
+function copiarLista() {
+    const items = document.querySelectorAll("#modalLista li");
+    const texto = Array.from(items).map(li => li.textContent).join("\n");
+    if (!texto) return;
+    navigator.clipboard.writeText(texto).then(() => {
+        alert("Lista copiada.");
+    }).catch(() => {
+        alert("No se pudo copiar.");
+    });
+}
+
+async function exportarProgresoExcel() {
+    const periodo = document.getElementById("periodoCustom").value.trim();
+    if (!periodo) {
+        alert("No hay período seleccionado.");
+        return;
+    }
+    window.location.href = `/previsora/api/exportar_progreso?periodo=${encodeURIComponent(periodo)}`;
+}
+
+window.onclick = function(event) {
+    const modal = document.getElementById("progresoModal");
+    if (event.target === modal) {
+        closeModal();
+    }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+buildPeriodGrid();
+refreshFiles();
+</script>
+</body>
+</html>
