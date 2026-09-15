@@ -7,6 +7,7 @@
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<link rel="stylesheet" href="/static/identity.css">
 <style>
   :root {
     --bg-body: #f5f7fc;
@@ -215,15 +216,15 @@
           <span>Genera: soportes en PDF, guardados por N° de factura</span>
         </div>
 
-        <div class="form-group" id="identidadBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
-          <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0; display:block; margin-bottom:6px;">¿Quién eres?</label>
-          <div style="display:flex; gap:6px;">
-            <button type="button" class="chip-identidad" data-id="SaludNet" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Salud Net</button>
-            <button type="button" class="chip-identidad" data-id="Campbell" style="flex:1; padding:7px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); font-size:0.75rem; cursor:pointer;">Campbell</button>
+        <div class="form-group identity-panel" id="identidadBox">
+          <div class="identity-heading"><span class="identity-icon"><i class="fas fa-user-check"></i></span><span class="identity-title">¿Quién eres?</span></div>
+          <p class="identity-subtitle">Selecciona tu identidad para registrar esta ejecución.</p>
+          <div class="identity-options">
+            <button type="button" class="chip-identidad identity-option" data-id="SaludNet"><i class="fas fa-building identity-option-icon"></i>Salud Net<span class="identity-check"><i class="fas fa-check"></i></span></button>
+            <button type="button" class="chip-identidad identity-option" data-id="Campbell"><i class="fas fa-hospital identity-option-icon"></i>Campbell<span class="identity-check"><i class="fas fa-check"></i></span></button>
           </div>
-          <input type="text" id="identidadManual" placeholder="" autocomplete="off"
-                 style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
-             <div id="identidadError" role="alert" style="display:none; margin-top:7px; color:#b42318; font-size:0.72rem; font-weight:600;">⚠ Selecciona quién eres antes de iniciar el proceso.</div>
+          <input type="text" id="identidadManual" class="identity-manual" placeholder="Otra persona (opcional)" autocomplete="off">
+          <div id="identidadError" class="identity-error" role="alert"><i class="fas fa-triangle-exclamation"></i> Selecciona quién eres antes de iniciar el proceso.</div>
         </div>
 
         <button class="btn-primary" id="btnStart" onclick="startJob()">
@@ -338,15 +339,13 @@ let identidadActual = localStorage.getItem("identidadUsuario") || "";
 function pintarIdentidad() {
   document.querySelectorAll(".chip-identidad").forEach(btn => {
     const activo = btn.dataset.id === identidadActual;
-    btn.style.background = activo ? "var(--accent)" : "var(--bg-card)";
-    btn.style.color = activo ? "#fff" : "";
-    btn.style.borderColor = activo ? "var(--accent)" : "var(--border)";
+    btn.classList.toggle("is-selected", activo);
   });
   const manual = document.getElementById("identidadManual");
   const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
   manual.value = esChip ? "" : identidadActual;
   const error = document.getElementById("identidadError");
-  if (identidadActual && error) error.style.display = "none";
+  if (identidadActual && error) { error.style.display = "none"; document.getElementById("identidadBox").classList.remove("has-error"); }
 }
 
 document.querySelectorAll(".chip-identidad").forEach(btn => {
@@ -457,7 +456,7 @@ async function startJob() {
   const fileInput = document.getElementById("uploadFile");
   const file = fileInput.files[0];
 
-  if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
+  if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").classList.add("has-error"); document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
   if (!usuario || !password) { alert("Por favor completa usuario y contraseña."); return; }
   if ((!facturasCargadas || !file) && manualEntries.length === 0) {
     alert("Carga el Excel de facturas o agrega al menos una manualmente.");

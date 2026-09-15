@@ -288,6 +288,34 @@ La existencia remota de cada columna se basa en la evidencia compartida y en
 el error de Railway. La comprobacion directa desde este entorno queda
 `Pendiente de verificacion`.
 
+### 2026-09-15 — Rediseño visual del selector de identidad
+
+#### Frontend / UI
+
+- Se reemplazo el bloque visual antiguo de `¿Quién eres?` en los cuatro
+   paneles: Estado/Sura, Bolivar, Previsora y Mundial.
+- Se agrego `static/identity.css` como hoja compartida para evitar que cada
+   plantilla mantenga un diseño divergente.
+- El nuevo componente incluye icono, texto de contexto, tarjetas de opcion,
+   iconos por persona, marca visual de seleccion, foco accesible, campo para
+   otra persona y estado de error destacado.
+- La logica existente ahora cambia clases (`is-selected` y `has-error`) en
+   lugar de imponer estilos inline que ocultaban el nuevo diseño.
+
+#### Resultado
+
+- La seleccion conserva su obligatoriedad y la advertencia sigue apareciendo
+   junto al campo.
+- El diseño deja de ser un par de botones planos dentro de un contenedor gris
+   y pasa a ser un bloque visual consistente con el panel.
+- Las cuatro plantillas cargan `/static/identity.css`.
+
+#### Verificacion
+
+- No quedan errores reportados en las cuatro plantillas ni en `identity.css`.
+- Se verifico que el bloque antiguo de identidad fue reemplazado en las cuatro
+   pantallas.
+
 #### Configuracion / despliegue
 
 - Se mantiene `sleepApplication: true`.
