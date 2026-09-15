@@ -705,6 +705,7 @@
           </div>
           <input type="text" id="identidadManual" placeholder="" autocomplete="off"
                  style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+             <div id="identidadError" role="alert" style="display:none; margin-top:7px; color:#b42318; font-size:0.72rem; font-weight:600;">⚠ Selecciona quién eres antes de iniciar el proceso.</div>
         </div>
 
         <button class="btn-primary" id="btnStart" onclick="startJob()">
@@ -827,6 +828,7 @@
   </div>
 </div>
 
+<script src="/static/audit_ui.js"></script>
 <script>
 // ── Períodos con soporte para rangos ─────────────────────────────────────────
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -929,6 +931,7 @@ document.getElementById("uploadFile").addEventListener("change", function() {
 // ── Job ─────────────────────────────────────────────────────────────────────────
 let polling = null;
 let logCount = 0;
+  let duplicatePromptShown = false;
 let identidadActual = localStorage.getItem("identidadUsuario") || "";
 
 function pintarIdentidad() {
@@ -941,6 +944,8 @@ function pintarIdentidad() {
   const manual = document.getElementById("identidadManual");
   const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
   manual.value = esChip ? "" : identidadActual;
+  const error = document.getElementById("identidadError");
+  if (identidadActual && error) error.style.display = "none";
 }
 
 document.querySelectorAll(".chip-identidad").forEach(btn => {
@@ -1035,6 +1040,7 @@ async function startJob() {
     const periodoInput = document.getElementById("periodoCustom").value.trim();
     const dlPath = document.getElementById("downloadPath").value.trim();
 
+    if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if (!usuario || !password || !periodoInput) {
         alert("Por favor completa usuario, contraseña y período.");
         return;
@@ -1067,7 +1073,17 @@ async function startJob() {
         method: "POST",
         body: fd
     });
-    const data = await resp.json();
+    let data = await resp.json();
+
+    if (!data.ok && data.requiere_confirmacion) {
+      const decision = await solicitarDecisionDuplicados(data);
+      if (!decision) { setStatus("idle"); document.getElementById("btnStart").disabled = false; return; }
+      fd.append("confirmar_duplicados", "true");
+      fd.append("decision_redescarga", decision.decision);
+      fd.append("facturas_redescarga", JSON.stringify(decision.selected));
+      const retry = await fetch("/previsora/api/start", { method: "POST", body: fd });
+      data = await retry.json();
+    }
 
     if (!data.ok) {
         setStatus("error");
@@ -1081,8 +1097,8 @@ async function startJob() {
         ? `Rango: ${periodos[0]} → ${periodos[periodos.length - 1]} (${periodos.length} períodos)`
         : `Período: ${periodos[0]}`;
     addLog({ts: "--:--:--", msg: `🚀 Proceso iniciado | ${periodoInfo} | Destino: ${data.download_path}`, level: "info"});
-    if (polling) clearInterval(polling);
-    polling = setInterval(pollStatus, 1500);
+    if (polling) clearTimeout(polling);
+    pollStatus();
 }
 
 async function pollStatus() {
@@ -1094,8 +1110,13 @@ async function pollStatus() {
         const sr = await fetch(`/previsora/api/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`);
         const s = await sr.json();
         updateStats(s.stats);
+        if (s.duplicados_pendientes && !duplicatePromptShown) {
+          duplicatePromptShown = true;
+          const decision = await solicitarDecisionDuplicados(s.duplicados_pendientes);
+            await fetch('/previsora/api/duplicate-decision', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({empresa_id:currentEmpresaId, decision:decision ? decision.decision : 'ninguna', selected:decision ? decision.selected : []})});
+        }
         if (!s.running) {
-            clearInterval(polling);
+            clearTimeout(polling);
             polling = null;
             if (s.error) {
                 setStatus("error");
@@ -1106,10 +1127,12 @@ async function pollStatus() {
             document.getElementById("btnStart").disabled = false;
             refreshFiles();
             descargarExcelErroresSiHay(s.errores_excel_url);
+            return;
         }
     } catch(e) {
         console.error(e);
     }
+    polling = setTimeout(pollStatus, 1500);
 }
 
 function descargarExcelErroresSiHay(url) {

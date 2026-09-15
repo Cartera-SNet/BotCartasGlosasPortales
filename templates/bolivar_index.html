@@ -706,6 +706,7 @@
           </div>
           <input type="text" id="identidadManual" placeholder="" autocomplete="off"
                  style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+             <div id="identidadError" role="alert" style="display:none; margin-top:7px; color:#b42318; font-size:0.72rem; font-weight:600;">⚠ Selecciona quién eres antes de iniciar el proceso.</div>
         </div>
 
         <button class="btn-primary" id="btnStart" onclick="startJob()">
@@ -828,6 +829,7 @@
   </div>
 </div>
 
+<script src="/static/audit_ui.js"></script>
 <script>
 // ── Períodos ──────────────────────────────────────────────────────
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -901,6 +903,7 @@ document.getElementById("uploadFile").addEventListener("change", function() { do
 
 // ── Job ──────────────────────────────────────────────────────────
 let polling = null, logCount = 0;
+let duplicatePromptShown = false;
 let identidadActual = localStorage.getItem("identidadUsuario") || "";
 
 function pintarIdentidad() {
@@ -913,6 +916,8 @@ function pintarIdentidad() {
   const manual = document.getElementById("identidadManual");
   const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
   manual.value = esChip ? "" : identidadActual;
+  const error = document.getElementById("identidadError");
+  if (identidadActual && error) error.style.display = "none";
 }
 
 document.querySelectorAll(".chip-identidad").forEach(btn => {
@@ -1006,6 +1011,7 @@ async function startJob() {
     const pwd = document.getElementById("password").value.trim();
     const per = document.getElementById("periodoCustom").value.trim();
     const dl = document.getElementById("downloadPath").value.trim();
+    if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if (!usr || !pwd || !per) { alert("Completa todos los campos."); return; }
     const perrs = parsePeriodo(per);
     if (!perrs.length) { alert("Formato de período inválido."); return; }
@@ -1029,7 +1035,15 @@ async function startJob() {
     if (fi) fd.append("file", fi);
     if (manualEntries.length > 0) fd.append("manual_entries", JSON.stringify(manualEntries));
 
-    const data = await (await fetch("/bolivar/api/start?q=1", { method: "POST", body: fd })).json();
+    let data = await (await fetch("/bolivar/api/start?q=1", { method: "POST", body: fd })).json();
+    if (!data.ok && data.requiere_confirmacion) {
+      const decision = await solicitarDecisionDuplicados(data);
+      if (!decision) { setStatus("idle"); document.getElementById("btnStart").disabled = false; return; }
+      fd.append("confirmar_duplicados", "true");
+      fd.append("decision_redescarga", decision.decision);
+      fd.append("facturas_redescarga", JSON.stringify(decision.selected));
+      data = await (await fetch("/bolivar/api/start?q=1", { method: "POST", body: fd })).json();
+    }
     if (!data.ok) { setStatus("error"); showError(data.error); document.getElementById("btnStart").disabled = false; return; }
     setEmpresaId(data.empresa_id);
     addLog({ts:"--:--:--", msg:`&#x1F680; Proceso iniciado | ${per} | Destino: ${data.download_path}`, level:"info"});
@@ -1044,6 +1058,11 @@ async function pollStatus() {
         logCount += d.logs.length;
         const s = await (await fetch(`/bolivar/api/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`)).json();
         updateStats(s.stats);
+        if (s.duplicados_pendientes && !duplicatePromptShown) {
+          duplicatePromptShown = true;
+          const decision = await solicitarDecisionDuplicados(s.duplicados_pendientes);
+            await fetch('/bolivar/api/duplicate-decision', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({empresa_id:currentEmpresaId, decision:decision ? decision.decision : 'ninguna', selected:decision ? decision.selected : []})});
+        }
         if (!s.running) {
             polling = null;
             setStatus(s.error ? "error" : "done");

@@ -32,6 +32,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file, send_
 from . import concurrency
 from . import historial_db
 from . import registro_rutas
+from .catalogo_ips import resolver, validar_identidad
 
 try:
     import openpyxl
@@ -244,6 +245,14 @@ def log(job, empresa, msg, level="info"):
     with job["lock"]:
         job["state"]["logs"].append({"ts": ts, "msg": msg, "level": level})
     (logger.error if level == "error" else logger.info)(f"[{empresa}] {msg}")
+    if level == "error" and job is not None:
+        try:
+            historial_db.registrar_error_ejecucion(
+                job["state"].get("ejecucion_id"), None, empresa, EMPRESAS.get(empresa, {}).get("nombre"),
+                job["state"].get("ips_identity"), "bot", msg, "log", True, 1, "error"
+            )
+        except Exception:
+            pass
 
 
 def reset_state(job):
@@ -299,6 +308,18 @@ def guardar_progreso(ips_dir: Path, exitosas, meta=None):
         if meta:
             data["meta"] = meta
         json.dump(data, open(p, "w", encoding="utf-8"), indent=2)
+        historial_db.registrar_descargas(
+            aseguradora=(meta or {}).get("aseguradora", "Desconocida"),
+            ips_nombre=(meta or {}).get("ips_nombre", "IPS_NO_IDENTIFICADA"),
+            periodo=(meta or {}).get("periodo"), identidad=(meta or {}).get("identidad"),
+            items=[{"factura": e["factura"], "siniestro": f"{e['numero']}/{e['anio']}*{e['cuenta']}", "fecha_descarga": e.get("timestamp")} for e in exitosas],
+            ips=(meta or {}).get("ips"),
+        )
+        historial_db.registrar_facturas_ejecucion(
+            (meta or {}).get("ejecucion_id"), "estado_sura", (meta or {}).get("aseguradora"),
+            (meta or {}).get("ips"), (meta or {}).get("periodo"),
+            [{"factura": e["factura"], "estado": "exitosa", "archivo": e.get("archivo"), "fecha_fin": e.get("timestamp")} for e in exitosas],
+        )
     except Exception as e:
         logger.warning(f"Error al guardar progreso: {e}")
 
@@ -835,6 +856,8 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                 completadas.add(factura)
                 guardar_progreso(ips_dir, exitosas, meta={
                     "identidad": job["state"].get("identidad"),
+                    "ips": job["state"].get("ips_identity"),
+                    "ejecucion_id": job["state"].get("ejecucion_id"),
                     "ips_nombre": ips_nombre,
                     "aseguradora": EMPRESAS[empresa]["nombre"],
                 })
@@ -1093,6 +1116,11 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
         # descargado hasta el momento.
         if not zip_ya_generado:
             generar_zip_parcial(job, empresa, dl_dir, ips_dir, ips_nombre, cfg, exitosas, errores)
+        historial_db.cerrar_ejecucion(
+            job_state.get("ejecucion_id"), "error" if job_state.get("error") else ("cancelada" if job_state.get("stopping") else "completada"),
+            total_detectadas=len(filas), total_procesadas=len(exitosas) + len(errores),
+            total_exitosas=len(exitosas), total_fallidas=len(errores), total_redescargadas=0,
+        )
         job["browser"] = None
         with job_lock:
             job_state["running"] = False
@@ -1146,6 +1174,10 @@ def start_job(empresa):
     custom_path = request.form.get("download_path", "").strip()
     archivo = request.files.get("file")
     manual_json = request.form.get("manual_entries", "").strip()
+    identidad = validar_identidad(request.form.get("identidad"))
+
+    if not identidad:
+        return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
 
     if not usuario or not password:
         return jsonify({"ok": False, "error": "Faltan usuario y/o contraseña"}), 400
@@ -1209,18 +1241,27 @@ def start_job(empresa):
     ips_nombre, nit = extraer_ips_desde_usuario(usuario, cfg["mapa_ips"])
 
     confirmar_duplicados = str(request.form.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
-    if not confirmar_duplicados:
-        try:
-            ya_descargadas = historial_db.buscar_ya_descargadas(
-                cfg["nombre"], ips_nombre, [f["factura"] for f in filas]
-            )
-        except Exception:
-            ya_descargadas = {}
-        if ya_descargadas:
+    decision_redescarga = request.form.get("decision_redescarga", "")
+    try:
+        facturas_redescarga = {str(v) for v in json.loads(request.form.get("facturas_redescarga", "[]"))}
+    except Exception:
+        facturas_redescarga = set()
+    try:
+        ya_descargadas = historial_db.buscar_ya_descargadas(
+            cfg["nombre"], ips_nombre, [f["factura"] for f in filas]
+        )
+    except Exception:
+        ya_descargadas = {}
+    if ya_descargadas:
+        if not confirmar_duplicados:
             return jsonify({
                 "ok": False, "requiere_confirmacion": True,
                 "ya_descargadas": ya_descargadas, "total_filas": len(filas),
             })
+        if decision_redescarga == "ninguna":
+            filas = [f for f in filas if f["factura"] not in ya_descargadas]
+        elif decision_redescarga == "seleccionadas":
+            filas = [f for f in filas if f["factura"] not in ya_descargadas or f["factura"] in facturas_redescarga]
 
     with job["lock"]:
         job["state"].update({
@@ -1239,8 +1280,12 @@ def start_job(empresa):
         log(job, empresa, f"⚠️ Fila {ef['fila']}: siniestro '{ef['siniestro']}' con formato inválido, se omite.", "warn")
     log(job, empresa, f"🚀 Proceso iniciado | IPS detectada: {ips_nombre} (NIT {nit}) | {len(filas)} facturas")
 
-    identidad = (request.form.get("identidad", "") or "").strip() or None
     job["state"]["identidad"] = identidad
+    job["state"]["ips_identity"] = resolver(nit=nit, nombre_detectado=ips_nombre)
+    job["state"]["ips_nit"] = nit
+    job["state"]["ejecucion_id"] = historial_db.iniciar_ejecucion(
+        identidad, empresa, cfg["nombre"], job["state"]["ips_identity"], periodo_input, dl_path
+    )
 
     concurrency.registrar_inicio(empresa)
     t = threading.Thread(target=run_automation,
@@ -1265,7 +1310,7 @@ def stop_job_route(empresa):
 @bp.route("/api/<empresa>/reset", methods=["POST"])
 def reset_job_route(empresa):
     empresa_o_404(empresa)
-    data = request.json or {}
+    data = request.get_json(silent=True) or request.form or {}
     ips = data.get("ips", "").strip()
     empresa_id = data.get("empresa_id", "").strip()
     job = get_job_or_none(empresa, empresa_id)
@@ -1357,7 +1402,7 @@ def clear_panel(empresa):
     otra cuenta ni a la otra empresa.
     """
     empresa_o_404(empresa)
-    empresa_id = request.args.get("empresa_id", "") or (request.json or {}).get("empresa_id", "")
+    empresa_id = request.args.get("empresa_id", "") or (request.get_json(silent=True) or {}).get("empresa_id", "")
     job = get_job_or_none(empresa, empresa_id)
     if not job:
         return jsonify({"ok": True})

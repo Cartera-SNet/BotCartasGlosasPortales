@@ -265,6 +265,7 @@
           </div>
           <input type="text" id="identidadManual" placeholder="" autocomplete="off"
                  style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+             <div id="identidadError" role="alert" style="display:none; margin-top:7px; color:#b42318; font-size:0.72rem; font-weight:600;">⚠ Selecciona quién eres antes de iniciar el proceso.</div>
         </div>
 
         <button class="btn-primary" id="btnStart" onclick="startJob()">
@@ -473,6 +474,7 @@
   </div>
 </div>
 
+<script src="/static/audit_ui.js"></script>
 <script>
 let identidadActual = localStorage.getItem("identidadUsuario") || "";
 
@@ -486,6 +488,8 @@ function pintarIdentidad() {
   const manual = document.getElementById("identidadManual");
   const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
   manual.value = esChip ? "" : identidadActual;
+  const error = document.getElementById("identidadError");
+  if (identidadActual && error) error.style.display = "none";
 }
 
 document.querySelectorAll(".chip-identidad").forEach(btn => {
@@ -585,6 +589,7 @@ async function startJob() {
   const lote = document.getElementById('lote').value.trim();
   const valores = getValoresTexto();
 
+  if (!identidadActual) { document.getElementById('identidadError').style.display = 'block'; document.getElementById('identidadBox').scrollIntoView({behavior:'smooth', block:'center'}); return; }
   if (!usuario || !password) { alert('Digite usuario y contraseña.'); return; }
   if (parseValores(valores).length === 0) { alert('Carga el Excel o pega al menos un consecutivo.'); return; }
 
@@ -602,13 +607,8 @@ async function startJob() {
   let data = await resp.json();
 
   if (!data.ok && data.requiere_confirmacion) {
-    const n = Object.keys(data.ya_descargadas).length;
-    const ejemplos = Object.keys(data.ya_descargadas).slice(0, 5).join(', ');
-    const seguir = confirm(
-      `${n} de estos consecutivos ya fueron descargados antes (ej: ${ejemplos}).\n\n` +
-      `¿Quieres continuar de todos modos e intentarlos de nuevo?`
-    );
-    if (!seguir) {
+    const decision = await solicitarDecisionDuplicados(data);
+    if (!decision) {
       document.getElementById('btnStart').disabled = false;
       setStatus('idle');
       return;
@@ -616,7 +616,7 @@ async function startJob() {
     resp = await fetch('/mundial/api/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, confirmar_duplicados: true })
+      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, confirmar_duplicados: true, decision_redescarga: decision.decision, facturas_redescarga: decision.selected })
     });
     data = await resp.json();
   }

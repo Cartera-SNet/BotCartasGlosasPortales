@@ -223,6 +223,7 @@
           </div>
           <input type="text" id="identidadManual" placeholder="" autocomplete="off"
                  style="width:100%; margin-top:6px; font-size:0.65rem; padding:4px 6px; border:none; background:transparent; color:var(--text-secondary); opacity:0.35;">
+             <div id="identidadError" role="alert" style="display:none; margin-top:7px; color:#b42318; font-size:0.72rem; font-weight:600;">⚠ Selecciona quién eres antes de iniciar el proceso.</div>
         </div>
 
         <button class="btn-primary" id="btnStart" onclick="startJob()">
@@ -324,6 +325,7 @@
   </div>
 </div>
 
+<script src="/static/audit_ui.js"></script>
 <script>
 const EMPRESA = "{{ empresa }}";   // "estado" o "sura" — usado en todas las llamadas /api/<empresa>/...
 let currentIps = "";
@@ -343,6 +345,8 @@ function pintarIdentidad() {
   const manual = document.getElementById("identidadManual");
   const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
   manual.value = esChip ? "" : identidadActual;
+  const error = document.getElementById("identidadError");
+  if (identidadActual && error) error.style.display = "none";
 }
 
 document.querySelectorAll(".chip-identidad").forEach(btn => {
@@ -453,6 +457,7 @@ async function startJob() {
   const fileInput = document.getElementById("uploadFile");
   const file = fileInput.files[0];
 
+  if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
   if (!usuario || !password) { alert("Por favor completa usuario y contraseña."); return; }
   if ((!facturasCargadas || !file) && manualEntries.length === 0) {
     alert("Carga el Excel de facturas o agrega al menos una manualmente.");
@@ -477,18 +482,15 @@ async function startJob() {
   let data = await resp.json();
 
   if (!data.ok && data.requiere_confirmacion) {
-    const n = Object.keys(data.ya_descargadas).length;
-    const ejemplos = Object.keys(data.ya_descargadas).slice(0, 5).join(", ");
-    const seguir = confirm(
-      `${n} de estas facturas ya fueron descargadas antes (ej: ${ejemplos}).\n\n` +
-      `¿Quieres continuar de todos modos e intentarlas de nuevo?`
-    );
-    if (!seguir) {
+    const decision = await solicitarDecisionDuplicados(data);
+    if (!decision) {
       document.getElementById("btnStart").disabled = false;
       setStatus("idle");
       return;
     }
     formData.append("confirmar_duplicados", "true");
+    formData.append("decision_redescarga", decision.decision);
+    formData.append("facturas_redescarga", JSON.stringify(decision.selected));
     resp = await fetch(`/api/${EMPRESA}/start`, { method: "POST", body: formData });
     data = await resp.json();
   }
@@ -503,8 +505,8 @@ async function startJob() {
   currentIps = data.ips;
   setEmpresaId(data.empresa_id);
   addLog({ts: "--:--:--", msg: `🚀 Proceso iniciado | IPS: ${data.ips} | ${data.total} facturas | Destino: ${data.download_path}`, level: "info"});
-  if (polling) clearInterval(polling);
-  polling = setInterval(pollStatus, 1500);
+  if (polling) clearTimeout(polling);
+  pollStatus();
 }
 
 async function pollStatus() {
@@ -517,13 +519,15 @@ async function pollStatus() {
     const s = await sr.json();
     updateStats(s.stats);
     if (!s.running) {
-      clearInterval(polling); polling = null;
+      clearTimeout(polling); polling = null;
       if (s.error) { setStatus("error"); showError(s.error); } else { setStatus("done"); }
       document.getElementById("btnStart").disabled = false;
       refreshFiles();
       descargarExcelErroresSiHay(s.errores_excel_url);
+      return;
     }
   } catch(e) { console.error(e); }
+  polling = setTimeout(pollStatus, 1500);
 }
 
 function descargarExcelErroresSiHay(url) {
