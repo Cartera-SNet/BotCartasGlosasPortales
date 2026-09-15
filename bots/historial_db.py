@@ -81,7 +81,7 @@ def inicializar():
                 id %s, ips_id INTEGER NOT NULL, nombre_alias TEXT NOT NULL UNIQUE)""" %
                 ("SERIAL PRIMARY KEY" if _USA_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"))
             cur.execute(f"""CREATE TABLE IF NOT EXISTS ejecuciones (
-                id {_id_type()}, persona TEXT NOT NULL, inicio TEXT NOT NULL, fin TEXT,
+                id {_id_type()}, persona TEXT NOT NULL, fecha_inicio TEXT NOT NULL, fecha_fin TEXT,
                 estado TEXT NOT NULL, bot TEXT NOT NULL, aseguradora TEXT, ips_id INTEGER,
                 ips_nit TEXT, ips_nombre_estandar TEXT, nombre_detectado TEXT,
                 metodo_identificacion TEXT, periodo TEXT, ruta_destino TEXT, entorno TEXT,
@@ -101,7 +101,7 @@ def inicializar():
                 mensaje TEXT NOT NULL, etapa TEXT, recuperable INTEGER, intento INTEGER,
                 resultado_final TEXT, fecha TEXT NOT NULL)""")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_ejec_factura ON ejecucion_facturas(ips_nit, factura)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_ejecuciones_persona ON ejecuciones(persona, inicio)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ejecuciones_persona ON ejecuciones(persona, fecha_inicio)")
             conn.commit()
         finally:
             conn.close()
@@ -257,10 +257,10 @@ def iniciar_ejecucion(persona, bot, aseguradora, ips, periodo, ruta_destino):
         try:
             cur = conn.cursor(); m = _marcador()
             if _USA_POSTGRES:
-                cur.execute("INSERT INTO ejecuciones (persona,inicio,estado,bot,aseguradora,ips_id,ips_nit,ips_nombre_estandar,nombre_detectado,metodo_identificacion,periodo,ruta_destino,entorno) VALUES (" + ",".join([m] * len(values)) + ") RETURNING id", values)
+                cur.execute("INSERT INTO ejecuciones (persona,fecha_inicio,estado,bot,aseguradora,ips_id,ips_nit,ips_nombre_estandar,nombre_detectado,metodo_identificacion,periodo,ruta_destino,entorno) VALUES (" + ",".join([m] * len(values)) + ") RETURNING id", values)
                 result = cur.fetchone()[0]
             else:
-                cur.execute("INSERT INTO ejecuciones (persona,inicio,estado,bot,aseguradora,ips_id,ips_nit,ips_nombre_estandar,nombre_detectado,metodo_identificacion,periodo,ruta_destino,entorno) VALUES (" + ",".join([m] * len(values)) + ")", values)
+                cur.execute("INSERT INTO ejecuciones (persona,fecha_inicio,estado,bot,aseguradora,ips_id,ips_nit,ips_nombre_estandar,nombre_detectado,metodo_identificacion,periodo,ruta_destino,entorno) VALUES (" + ",".join([m] * len(values)) + ")", values)
                 result = cur.lastrowid
             if _USA_POSTGRES and result is None:
                 cur.execute("SELECT currval(pg_get_serial_sequence('ejecuciones','id'))"); result = cur.fetchone()[0]
@@ -273,7 +273,7 @@ def cerrar_ejecucion(ejecucion_id, estado, **totales):
     if not ejecucion_id:
         return
     permitidos = {"total_detectadas", "total_procesadas", "total_exitosas", "total_fallidas", "total_omitidas", "total_redescargadas", "decision_redescarga", "facturas_previas", "facturas_seleccionadas", "facturas_descartadas"}
-    fields = {"fin": datetime.now(timezone.utc).isoformat(), "estado": estado}
+    fields = {"fecha_fin": datetime.now(timezone.utc).isoformat(), "estado": estado}
     fields.update({k: v for k, v in totales.items() if k in permitidos})
     with _lock:
         conn = _conectar()

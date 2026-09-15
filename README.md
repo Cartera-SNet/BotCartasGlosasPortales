@@ -251,6 +251,43 @@ presentes.
 - Verificar directamente en Neon los indices, restricciones y migracion de
    filas antiguas.
 
+### 2026-09-15 — Correccion de arranque en Railway por nombres de columnas
+
+#### Problema encontrado
+
+Railway no podia iniciar Gunicorn. Neon ya tenia `ejecuciones` creada con las
+columnas `fecha_inicio` y `fecha_fin`, pero el codigo intentaba crear el indice
+`idx_ejecuciones_persona` usando una columna inexistente llamada `inicio`.
+PostgreSQL produjo `psycopg2.errors.UndefinedColumn` y el worker se cerraba al
+importar `app.py`.
+
+#### Correccion
+
+- El esquema inicializable usa ahora `fecha_inicio` y `fecha_fin`.
+- El indice usa `(persona, fecha_inicio)`.
+- El INSERT de ejecuciones usa `fecha_inicio`.
+- El cierre de ejecuciones actualiza `fecha_fin`.
+- Se verifico compatibilidad local contra una tabla preexistente con los
+   nombres de Neon.
+
+#### Tablas actualmente creadas en Neon
+
+Segun las capturas y SQL ejecutado durante esta configuracion, el esquema
+contiene:
+
+| Tabla | Funcion |
+|---|---|
+| `descargas` | Resumen historico compatible de facturas descargadas. |
+| `ips` | Catalogo central de IPS con NIT unico y nombre estandar. |
+| `ips_alias` | Alias de nombres de IPS. |
+| `ejecuciones` | Una fila por corrida, con persona, bot, aseguradora, IPS, periodo, estado y contadores. Usa `fecha_inicio`/`fecha_fin`. |
+| `ejecucion_facturas` | Facturas participantes en cada ejecucion y redescargas. |
+| `errores_ejecucion` | Errores asociados a ejecuciones, factura, etapa e intento. |
+
+La existencia remota de cada columna se basa en la evidencia compartida y en
+el error de Railway. La comprobacion directa desde este entorno queda
+`Pendiente de verificacion`.
+
 #### Configuracion / despliegue
 
 - Se mantiene `sleepApplication: true`.
