@@ -316,6 +316,17 @@ el error de Railway. La comprobacion directa desde este entorno queda
 - Se verifico que el bloque antiguo de identidad fue reemplazado en las cuatro
    pantallas.
 
+### 2026-09-15 — Identidad sin selección predeterminada
+
+- Se elimino la persistencia de `identidadUsuario` en `localStorage` de los
+   cuatro paneles.
+- Cada apertura o recarga inicia con `identidadActual = ""`, sin Salud Net ni
+   Campbell seleccionados.
+- La persona debe elegir explícitamente una opción en cada nueva sesión de la
+   pantalla antes de iniciar una descarga.
+- La validación de frontend y backend se conserva; si no hay selección, el
+   proceso no comienza.
+
 #### Configuracion / despliegue
 
 - Se mantiene `sleepApplication: true`.

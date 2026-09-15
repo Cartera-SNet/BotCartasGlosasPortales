@@ -334,12 +334,13 @@ let currentEmpresaId = sessionStorage.getItem("currentEmpresaId_" + EMPRESA) || 
 let polling = null;
 let logCount = 0;
 let facturasCargadas = 0;
-let identidadActual = localStorage.getItem("identidadUsuario") || "";
+let identidadActual = "";
 
 function pintarIdentidad() {
   document.querySelectorAll(".chip-identidad").forEach(btn => {
     const activo = btn.dataset.id === identidadActual;
     btn.classList.toggle("is-selected", activo);
+    btn.setAttribute("aria-pressed", activo ? "true" : "false");
   });
   const manual = document.getElementById("identidadManual");
   const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
@@ -348,10 +349,18 @@ function pintarIdentidad() {
   if (identidadActual && error) { error.style.display = "none"; document.getElementById("identidadBox").classList.remove("has-error"); }
 }
 
+// Garantiza que en cada carga ninguna chip venga "seleccionada por default".
+identidadActual = "";
+document.querySelectorAll(".chip-identidad").forEach(btn => {
+  btn.classList.remove("is-selected");
+  btn.setAttribute("aria-pressed", "false");
+  btn.blur();
+});
+pintarIdentidad();
+
 document.querySelectorAll(".chip-identidad").forEach(btn => {
   btn.addEventListener("click", () => {
     identidadActual = btn.dataset.id;
-    localStorage.setItem("identidadUsuario", identidadActual);
     pintarIdentidad();
   });
 });
@@ -360,12 +369,9 @@ document.getElementById("identidadManual").addEventListener("change", (e) => {
   const valor = e.target.value.trim();
   if (valor) {
     identidadActual = valor;
-    localStorage.setItem("identidadUsuario", identidadActual);
     pintarIdentidad();
   }
 });
-
-pintarIdentidad();
 
 let manualEntries = [];
 

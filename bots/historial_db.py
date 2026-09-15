@@ -100,6 +100,10 @@ def inicializar():
                 aseguradora TEXT, ips_id INTEGER, ips_nit TEXT, tipo_error TEXT NOT NULL,
                 mensaje TEXT NOT NULL, etapa TEXT, recuperable INTEGER, intento INTEGER,
                 resultado_final TEXT, fecha TEXT NOT NULL)""")
+            # Garantiza idempotencia: registrar_facturas_ejecucion() se llama
+            # una vez por factura descargada y reenvía todo el acumulado; sin
+            # esta restricción única, los inserts posteriores revientan.
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ejecucion_facturas_ejecucion_id_factura_key ON ejecucion_facturas(ejecucion_id, factura)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_ejec_factura ON ejecucion_facturas(ips_nit, factura)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_ejecuciones_persona ON ejecuciones(persona, fecha_inicio)")
             conn.commit()
@@ -220,11 +224,32 @@ def registrar_facturas_ejecucion(ejecucion_id, bot, aseguradora, ips, periodo, i
         try:
             cur = conn.cursor()
             if _USA_POSTGRES:
+                # guardar_progreso() se llama después de CADA descarga y reenvía
+                # TODAS las facturas ya registradas (acumuladas en detalle). Sin
+                # ON CONFLICT, la segunda llamada en adelante revienta con
+                # "duplicate key value violates unique constraint
+                # ejecucion_facturas_ejecucion_id_factura_key". Hacemos el
+                # upsert para que registrar sea seguro de repetir.
                 psycopg2.extras.execute_values(cur, """INSERT INTO ejecucion_facturas
                     (ejecucion_id,factura,ips_id,ips_nit,aseguradora,bot,periodo,estado,redescargada,fecha_inicio,fecha_fin,archivo,error)
-                    VALUES %s""", filas)
+                    VALUES %s
+                    ON CONFLICT (ejecucion_id, factura) DO UPDATE SET
+                        ips_id=EXCLUDED.ips_id,
+                        ips_nit=EXCLUDED.ips_nit,
+                        aseguradora=EXCLUDED.aseguradora,
+                        bot=EXCLUDED.bot,
+                        periodo=EXCLUDED.periodo,
+                        estado=EXCLUDED.estado,
+                        redescargada=EXCLUDED.redescargada,
+                        fecha_inicio=EXCLUDED.fecha_inicio,
+                        fecha_fin=EXCLUDED.fecha_fin,
+                        archivo=EXCLUDED.archivo,
+                        error=EXCLUDED.error""", filas)
             else:
-                cur.executemany("""INSERT INTO ejecucion_facturas
+                # SQLite: la UNIQUE INDEX creada en inicializar() hace que las
+                # re-inserciones choquen con la restricción. INSERT OR IGNORE
+                # las convierte en no-op para no romper el flujo.
+                cur.executemany("""INSERT OR IGNORE INTO ejecucion_facturas
                     (ejecucion_id,factura,ips_id,ips_nit,aseguradora,bot,periodo,estado,redescargada,fecha_inicio,fecha_fin,archivo,error)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", filas)
             conn.commit(); return len(filas)
