@@ -30,9 +30,6 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_file, send_from_directory, abort
 from . import concurrency
-from . import historial_db
-from . import registro_rutas
-from .catalogo_ips import resolver, validar_identidad
 
 try:
     import openpyxl
@@ -82,6 +79,12 @@ EMPRESAS = {
             "900900754": "SAN_FERNANDO",
             "901081281": "URGETRAUMA_SAN_FERNANDO",    # o ALVERNIA_TULUA (mismo NIT)
             "800255591": "MEDICO_QUIRURGICA_TULUA",
+            "901149757": "UNIDAD_MEDICA_DE_TRAUMA_VALLE_SALUD",
+            "900469882": "CENTRO_MEDICO_SERVISALUD_INTEGRAL_IPS",
+            "900002780": "FUNDACION_CAMPBELL",
+            "901523868": "MOVID_IPS",
+            "900558595": "FUNDACION_MEDICA_CAMPBELL",
+            "802024329": "RED_DE_URGENCIA_DE_LA_COSTA",
         },
         "ciudad_login": {
             "900267064": "SANTA MARTA - MAGDALENA",
@@ -98,6 +101,19 @@ EMPRESAS = {
             "900900754": "CALI - VALLE DEL CAUCA",
             "901081281": "CALI - VALLE DEL CAUCA",
             "800255591": "CALI - VALLE DEL CAUCA",
+            "901149757": "CALI - VALLE DEL CAUCA",
+            "900469882": "JAMUNDI - VALLE DEL CAUCA",
+            "900002780": "BARRANQUILLA - ATLANTICO",
+            "901523868": "BARRANQUILLA - ATLANTICO",
+            "900558595": "MALAMBO - ATLANTICO",
+            "802024329": "BARRANQUILLA - ATLANTICO",
+        },
+        # NITs con más de una sede: el usuario debe escoger la ciudad en el panel.
+        "sedes_login": {
+            "900002780": ["BARRANQUILLA - ATLANTICO", "MALAMBO - ATLANTICO",
+                          "SOLEDAD - ATLANTICO", "BARANOA - ATLANTICO",
+                          "SABANALARGA - ATLANTICO"],
+            "900558595": ["MALAMBO - ATLANTICO", "SOLEDAD - ATLANTICO"],
         },
     },
     "sura": {
@@ -127,6 +143,12 @@ EMPRESAS = {
             "900900754": "SAN_FERNANDO",
             "901081281": "URGETRAUMA_SAN_FERNANDO",
             "800255591": "MEDICO_QUIRURGICA_TULUA",
+            "901149757": "UNIDAD_MEDICA_DE_TRAUMA_VALLE_SALUD",
+            "900469882": "CENTRO_MEDICO_SERVISALUD_INTEGRAL_IPS",
+            "900002780": "FUNDACION_CAMPBELL",
+            "901523868": "MOVID_IPS",
+            "900558595": "FUNDACION_MEDICA_CAMPBELL",
+            "802024329": "RED_DE_URGENCIA_DE_LA_COSTA",
         },
         "ciudad_login": {
             "900267064": "SANTA MARTA - MAGDALENA",
@@ -143,6 +165,19 @@ EMPRESAS = {
             "900900754": "CALI - VALLE DEL CAUCA",
             "901081281": "CALI - VALLE DEL CAUCA",
             "800255591": "CALI - VALLE DEL CAUCA",
+            "901149757": "CALI - VALLE DEL CAUCA",
+            "900469882": "JAMUNDI - VALLE DEL CAUCA",
+            "900002780": "BARRANQUILLA - ATLANTICO",
+            "901523868": "BARRANQUILLA - ATLANTICO",
+            "900558595": "MALAMBO - ATLANTICO",
+            "802024329": "BARRANQUILLA - ATLANTICO",
+        },
+        # NITs con más de una sede: el usuario debe escoger la ciudad en el panel.
+        "sedes_login": {
+            "900002780": ["BARRANQUILLA - ATLANTICO", "MALAMBO - ATLANTICO",
+                          "SOLEDAD - ATLANTICO", "BARANOA - ATLANTICO",
+                          "SABANALARGA - ATLANTICO"],
+            "900558595": ["MALAMBO - ATLANTICO", "SOLEDAD - ATLANTICO"],
         },
     },
 }
@@ -245,14 +280,6 @@ def log(job, empresa, msg, level="info"):
     with job["lock"]:
         job["state"]["logs"].append({"ts": ts, "msg": msg, "level": level})
     (logger.error if level == "error" else logger.info)(f"[{empresa}] {msg}")
-    if level == "error" and job is not None:
-        try:
-            historial_db.registrar_error_ejecucion(
-                job["state"].get("ejecucion_id"), None, empresa, EMPRESAS.get(empresa, {}).get("nombre"),
-                job["state"].get("ips_identity"), "bot", msg, "log", True, 1, "error"
-            )
-        except Exception:
-            pass
 
 
 def reset_state(job):
@@ -283,43 +310,11 @@ def cargar_progreso(ips_dir: Path):
     return set()
 
 
-def guardar_progreso(ips_dir: Path, exitosas, meta=None):
-    """
-    Guarda no solo la lista de facturas completadas (como antes, para que
-    cargar_progreso() siga reanudando un lote a medio camino exactamente
-    igual), sino también el siniestro y la fecha real de cada una, más
-    metadata (identidad, ips, aseguradora) — necesario para poder migrar
-    esto a la base de datos de historial más adelante sin perder detalle.
-    """
+def guardar_progreso(ips_dir: Path, completadas):
     p = ips_dir / "progreso.json"
     try:
-        detalle = {
-            e["factura"]: {
-                "siniestro": f"{e['numero']}/{e['anio']}*{e['cuenta']}",
-                "fecha_descarga": e.get("timestamp") or datetime.now().isoformat(),
-            }
-            for e in exitosas
-        }
-        data = {
-            "completadas": list(detalle.keys()),
-            "detalle": detalle,
-            "actualizado": datetime.now().isoformat(),
-        }
-        if meta:
-            data["meta"] = meta
-        json.dump(data, open(p, "w", encoding="utf-8"), indent=2)
-        historial_db.registrar_descargas(
-            aseguradora=(meta or {}).get("aseguradora", "Desconocida"),
-            ips_nombre=(meta or {}).get("ips_nombre", "IPS_NO_IDENTIFICADA"),
-            periodo=(meta or {}).get("periodo"), identidad=(meta or {}).get("identidad"),
-            items=[{"factura": e["factura"], "siniestro": f"{e['numero']}/{e['anio']}*{e['cuenta']}", "fecha_descarga": e.get("timestamp")} for e in exitosas],
-            ips=(meta or {}).get("ips"),
-        )
-        historial_db.registrar_facturas_ejecucion(
-            (meta or {}).get("ejecucion_id"), "estado_sura", (meta or {}).get("aseguradora"),
-            (meta or {}).get("ips"), (meta or {}).get("periodo"),
-            [{"factura": e["factura"], "estado": "exitosa", "archivo": e.get("archivo"), "fecha_fin": e.get("timestamp")} for e in exitosas],
-        )
+        json.dump({"completadas": list(completadas), "actualizado": datetime.now().isoformat()},
+                   open(p, "w", encoding="utf-8"), indent=2)
     except Exception as e:
         logger.warning(f"Error al guardar progreso: {e}")
 
@@ -359,19 +354,20 @@ def generar_excel_solo_errores(dl_dir_empresa: Path, ips_nombre: str, errores):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Errores"
-        ws.append(["N° Factura", "Siniestro", "Error", "Fecha/Hora"])
+        ws.append(["Siniestro", "N° Factura", "Error", "Fecha/Hora"])
         for e in errores:
-            ws.append([e["factura"], e.get("siniestro_raw", ""), e.get("error", ""), e.get("timestamp", "")])
+            ws.append([e.get("siniestro_raw", ""), e["factura"], e.get("error", ""), e.get("timestamp", "")])
         wb.save(path)
         return nombre
     except Exception:
         return None
 
 
-def crear_zip_final(dl_dir: Path, ips_nombre: str, zip_prefix: str):
+def crear_zip_final(dl_dir: Path, ips_nombre: str, zip_prefix: str, excel_solo_errores_name: str = None):
     """
     Empaqueta TODO lo de la carpeta de la IPS: Soportes/ (PDFs), Errores/
     (solo si hubo algún error), progreso.json y el reporte Excel.
+    excel_solo_errores_name: si se generó el Excel de errores dedicado, se incluye.
     """
     ips_dir = dl_dir / ips_nombre
     if not ips_dir.exists():
@@ -381,6 +377,11 @@ def crear_zip_final(dl_dir: Path, ips_nombre: str, zip_prefix: str):
         for f in ips_dir.rglob("*"):
             if f.is_file():
                 zf.write(f, arcname=str(f.relative_to(ips_dir)))
+        # Incluir Excel dedicado SOLO con errores persistentes (recargable).
+        if excel_solo_errores_name:
+            excel_path = dl_dir / excel_solo_errores_name
+            if excel_path.exists():
+                zf.write(excel_path, arcname=excel_solo_errores_name)
     # Ya terminó bien: cualquier ZIP parcial que haya quedado de intentos
     # anteriores queda obsoleto (el final ya lo incluye todo), se borra.
     for viejo in dl_dir.glob(f"{zip_prefix}_{ips_nombre}_PARCIAL_*.zip"):
@@ -416,6 +417,12 @@ def generar_zip_parcial(job, empresa, dl_dir: Path, ips_dir: Path, ips_nombre: s
             for f in ips_dir.rglob("*"):
                 if f.is_file():
                     zf.write(f, arcname=str(f.relative_to(ips_dir)))
+            # Incluir Excel dedicado SOLO con errores persistentes (recargable).
+            excel_solo_errores_name = generar_excel_solo_errores(dl_dir, ips_nombre, errores)
+            if excel_solo_errores_name:
+                excel_path = dl_dir / excel_solo_errores_name
+                if excel_path.exists():
+                    zf.write(excel_path, arcname=excel_solo_errores_name)
         log(job, empresa, f"📦 ZIP parcial generado con lo descargado hasta el momento: {zip_path.name}", "warn")
     except Exception as e:
         log(job, empresa, f"No se pudo generar el ZIP parcial: {e}", "error")
@@ -668,7 +675,7 @@ def fill_by_label(job, empresa, page, label_text, value, timeout=8000):
 
 
 def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nombre: str, nit: str,
-                    filas: list, download_path: str):
+                    filas: list, download_path: str, ciudad_seleccionada: str = ""):
     from playwright.sync_api import sync_playwright
 
     cfg = EMPRESAS[empresa]
@@ -687,7 +694,7 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
     with job_lock:
         job_state["stats"]["total"] = len(filas)
 
-    ciudad = cfg["ciudad_login"].get(nit, "VERIFICAR")
+    ciudad = ciudad_seleccionada or cfg["ciudad_login"].get(nit, "VERIFICAR")
     if ciudad == "VERIFICAR":
         log(job, empresa, f"⚠️ No hay ciudad de login confirmada para el NIT {nit}. Revisa 'ciudad_login' en EMPRESAS.", "error")
 
@@ -854,13 +861,7 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                     "timestamp": datetime.now().isoformat(),
                 })
                 completadas.add(factura)
-                guardar_progreso(ips_dir, exitosas, meta={
-                    "identidad": job["state"].get("identidad"),
-                    "ips": job["state"].get("ips_identity"),
-                    "ejecucion_id": job["state"].get("ejecucion_id"),
-                    "ips_nombre": ips_nombre,
-                    "aseguradora": EMPRESAS[empresa]["nombre"],
-                })
+                guardar_progreso(ips_dir, completadas)
                 with job_lock:
                     job_state["stats"]["descargadas"] += 1
                     job_state["descargas_exitosas"] = exitosas
@@ -1086,7 +1087,8 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                 procesar_lote(fallidas, es_reintento=True)
 
             generar_reporte_excel(ips_dir, ips_nombre, exitosas, errores)
-            crear_zip_final(dl_dir, ips_nombre, cfg["zip_prefix"])
+            excel_solo_errores_name = generar_excel_solo_errores(dl_dir, ips_nombre, errores)
+            crear_zip_final(dl_dir, ips_nombre, cfg["zip_prefix"], excel_solo_errores_name)
             zip_ya_generado = True
 
             # Excel aparte, solo de errores, para descarga automática desde
@@ -1116,11 +1118,6 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
         # descargado hasta el momento.
         if not zip_ya_generado:
             generar_zip_parcial(job, empresa, dl_dir, ips_dir, ips_nombre, cfg, exitosas, errores)
-        historial_db.cerrar_ejecucion(
-            job_state.get("ejecucion_id"), "error" if job_state.get("error") else ("cancelada" if job_state.get("stopping") else "completada"),
-            total_detectadas=len(filas), total_procesadas=len(exitosas) + len(errores),
-            total_exitosas=len(exitosas), total_fallidas=len(errores), total_redescargadas=0,
-        )
         job["browser"] = None
         with job_lock:
             job_state["running"] = False
@@ -1165,7 +1162,6 @@ def upload_facturas(empresa):
         return jsonify({"ok": False, "error": f"Error al procesar archivo: {e}"}), 500
 
 
-
 @bp.route("/api/<empresa>/start", methods=["POST"])
 def start_job(empresa):
     cfg = empresa_o_404(empresa)
@@ -1174,13 +1170,16 @@ def start_job(empresa):
     custom_path = request.form.get("download_path", "").strip()
     archivo = request.files.get("file")
     manual_json = request.form.get("manual_entries", "").strip()
-    identidad = validar_identidad(request.form.get("identidad"))
-
-    if not identidad:
-        return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
+    ciudad_seleccionada = request.form.get("ciudad_login", "").strip()
 
     if not usuario or not password:
         return jsonify({"ok": False, "error": "Faltan usuario y/o contraseña"}), 400
+
+    _, nit_usuario = extraer_ips_desde_usuario(usuario, cfg["mapa_ips"])
+    sedes_disponibles = cfg.get("sedes_login", {}).get(nit_usuario, [])
+    if sedes_disponibles and ciudad_seleccionada not in sedes_disponibles:
+        return jsonify({"ok": False,
+                        "error": "Selecciona una sede válida antes de iniciar el proceso"}), 400
 
     manual_filas = []
     errores_formato = []
@@ -1238,31 +1237,6 @@ def start_job(empresa):
     if not filas:
         return jsonify({"ok": False, "error": "No se encontraron filas válidas (revisa el formato del siniestro)"}), 400
 
-    ips_nombre, nit = extraer_ips_desde_usuario(usuario, cfg["mapa_ips"])
-
-    confirmar_duplicados = str(request.form.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
-    decision_redescarga = request.form.get("decision_redescarga", "")
-    try:
-        facturas_redescarga = {str(v) for v in json.loads(request.form.get("facturas_redescarga", "[]"))}
-    except Exception:
-        facturas_redescarga = set()
-    try:
-        ya_descargadas = historial_db.buscar_ya_descargadas(
-            cfg["nombre"], ips_nombre, [f["factura"] for f in filas]
-        )
-    except Exception:
-        ya_descargadas = {}
-    if ya_descargadas:
-        if not confirmar_duplicados:
-            return jsonify({
-                "ok": False, "requiere_confirmacion": True,
-                "ya_descargadas": ya_descargadas, "total_filas": len(filas),
-            })
-        if decision_redescarga == "ninguna":
-            filas = [f for f in filas if f["factura"] not in ya_descargadas]
-        elif decision_redescarga == "seleccionadas":
-            filas = [f for f in filas if f["factura"] not in ya_descargadas or f["factura"] in facturas_redescarga]
-
     with job["lock"]:
         job["state"].update({
             "running": True, "finished": False, "error": None,
@@ -1270,26 +1244,20 @@ def start_job(empresa):
             "errores_detalle": [], "descargas_exitosas": [],
             "errores_excel_url": None,
         })
+
+    ips_nombre, nit = extraer_ips_desde_usuario(usuario, cfg["mapa_ips"])
     job["ips_nombre"] = ips_nombre
     dl_dir_empresa = DOWNLOAD_DIR / empresa
     dl_path = custom_path if custom_path else str(dl_dir_empresa)
-    if custom_path:
-        registro_rutas.registrar_ruta(EMPRESAS[empresa]["nombre"], custom_path)
 
     for ef in errores_formato:
         log(job, empresa, f"⚠️ Fila {ef['fila']}: siniestro '{ef['siniestro']}' con formato inválido, se omite.", "warn")
     log(job, empresa, f"🚀 Proceso iniciado | IPS detectada: {ips_nombre} (NIT {nit}) | {len(filas)} facturas")
 
-    job["state"]["identidad"] = identidad
-    job["state"]["ips_identity"] = resolver(nit=nit, nombre_detectado=ips_nombre)
-    job["state"]["ips_nit"] = nit
-    job["state"]["ejecucion_id"] = historial_db.iniciar_ejecucion(
-        identidad, empresa, cfg["nombre"], job["state"]["ips_identity"], periodo_input, dl_path
-    )
-
     concurrency.registrar_inicio(empresa)
     t = threading.Thread(target=run_automation,
-                          args=(job, empresa, usuario, password, ips_nombre, nit, filas, dl_path),
+                          args=(job, empresa, usuario, password, ips_nombre, nit, filas, dl_path,
+                                ciudad_seleccionada),
                           daemon=True)
     t.start()
     return jsonify({"ok": True, "ips": ips_nombre, "nit": nit, "empresa_id": empresa_id,
@@ -1310,23 +1278,28 @@ def stop_job_route(empresa):
 @bp.route("/api/<empresa>/reset", methods=["POST"])
 def reset_job_route(empresa):
     empresa_o_404(empresa)
-    data = request.get_json(silent=True) or request.form or {}
+    data = request.json or {}
     ips = data.get("ips", "").strip()
     empresa_id = data.get("empresa_id", "").strip()
     job = get_job_or_none(empresa, empresa_id)
 
     if job and job["state"]["running"]:
         stop_job(job, empresa)
-        time.sleep(2)
+        # Espera activa (máx ~10s) hasta que el hilo confirme running=False
+        # antes de borrar progreso y resetear estado.
+        for _ in range(20):
+            time.sleep(0.5)
+            with job["lock"]:
+                if not job["state"]["running"]:
+                    break
 
     if ips:
         progreso_file = DOWNLOAD_DIR / empresa / ips / "progreso.json"
         if progreso_file.exists():
             try:
-                n_migradas = historial_db.migrar_progreso_json(progreso_file.parent)
                 progreso_file.unlink()
                 if job:
-                    log(job, empresa, f"🗑️ Progreso eliminado: {progreso_file} ({n_migradas} factura(s) archivadas en el historial)")
+                    log(job, empresa, f"🗑️ Progreso eliminado: {progreso_file}")
             except Exception as e:
                 if job:
                     log(job, empresa, f"⚠️ Error al borrar {progreso_file}: {e}", "warn")
@@ -1402,7 +1375,7 @@ def clear_panel(empresa):
     otra cuenta ni a la otra empresa.
     """
     empresa_o_404(empresa)
-    empresa_id = request.args.get("empresa_id", "") or (request.get_json(silent=True) or {}).get("empresa_id", "")
+    empresa_id = request.args.get("empresa_id", "") or (request.json or {}).get("empresa_id", "")
     job = get_job_or_none(empresa, empresa_id)
     if not job:
         return jsonify({"ok": True})

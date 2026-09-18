@@ -7,7 +7,6 @@
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-<link rel="stylesheet" href="/static/identity.css">
 <style>
   :root {
     --bg-body: #f5f7fc;
@@ -137,6 +136,7 @@
   .modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
   .btn-modal { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.68rem; font-weight: 600; cursor: pointer; }
   .btn-modal.green { background: var(--success); color: white; }
+  .btn-modal.primary { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: white; }
   .btn-modal.gray { background: #f1f5f9; color: var(--text-secondary); }
   .btn-modal.red { background: #fee2e2; color: #991b1b; }
 </style>
@@ -214,17 +214,6 @@
         <div class="alert info">
           <i class="fas fa-info-circle"></i>
           <span>Genera: soportes en PDF, guardados por N° de factura</span>
-        </div>
-
-        <div class="form-group identity-panel" id="identidadBox">
-          <div class="identity-heading"><span class="identity-icon"><i class="fas fa-user-check"></i></span><span class="identity-title">¿Quién eres?</span></div>
-          <p class="identity-subtitle">Selecciona tu identidad para registrar esta ejecución.</p>
-          <div class="identity-options">
-            <button type="button" class="chip-identidad identity-option" data-id="SaludNet"><i class="fas fa-building identity-option-icon"></i>Salud Net<span class="identity-check"><i class="fas fa-check"></i></span></button>
-            <button type="button" class="chip-identidad identity-option" data-id="Campbell"><i class="fas fa-hospital identity-option-icon"></i>Campbell<span class="identity-check"><i class="fas fa-check"></i></span></button>
-          </div>
-          <input type="text" id="identidadManual" class="identity-manual" placeholder="Otra persona (opcional)" autocomplete="off">
-          <div id="identidadError" class="identity-error" role="alert"><i class="fas fa-triangle-exclamation"></i> Selecciona quién eres antes de iniciar el proceso.</div>
         </div>
 
         <button class="btn-primary" id="btnStart" onclick="startJob()">
@@ -307,6 +296,25 @@
   </div>
 </main>
 
+<!-- Se muestra únicamente para NITs que tienen más de una sede de login. -->
+<div class="modal" id="sedeModal" role="dialog" aria-modal="true" aria-labelledby="sedeModalTitulo">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="sedeModalTitulo"><i class="fas fa-building" style="color:var(--accent);"></i> Selecciona la sede</h3>
+      <button class="modal-close" type="button" onclick="cerrarModalSede()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary); margin-bottom:12px;">Este NIT tiene varias sedes. Selecciona la ciudad con la que iniciarás sesión.</p>
+      <label for="sedeLogin">Ciudad de login</label>
+      <select id="sedeLogin" class="input-field"></select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal gray" type="button" onclick="cerrarModalSede()">Cancelar</button>
+      <button class="btn-modal primary" type="button" onclick="confirmarSede()"><i class="fas fa-rocket"></i> Iniciar descarga</button>
+    </div>
+  </div>
+</div>
+
 <div id="progresoModal" class="modal">
   <div class="modal-content">
     <div class="modal-header">
@@ -326,53 +334,14 @@
   </div>
 </div>
 
-<script src="/static/audit_ui.js"></script>
 <script>
 const EMPRESA = "{{ empresa }}";   // "estado" o "sura" — usado en todas las llamadas /api/<empresa>/...
+const SEDES_LOGIN = {{ cfg.get('sedes_login', {}) | tojson }};
 let currentIps = "";
 let currentEmpresaId = sessionStorage.getItem("currentEmpresaId_" + EMPRESA) || "";
 let polling = null;
 let logCount = 0;
 let facturasCargadas = 0;
-let identidadActual = "";
-
-function pintarIdentidad() {
-  document.querySelectorAll(".chip-identidad").forEach(btn => {
-    const activo = btn.dataset.id === identidadActual;
-    btn.classList.toggle("is-selected", activo);
-    btn.setAttribute("aria-pressed", activo ? "true" : "false");
-  });
-  const manual = document.getElementById("identidadManual");
-  const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
-  manual.value = esChip ? "" : identidadActual;
-  const error = document.getElementById("identidadError");
-  if (identidadActual && error) { error.style.display = "none"; document.getElementById("identidadBox").classList.remove("has-error"); }
-}
-
-// Garantiza que en cada carga ninguna chip venga "seleccionada por default".
-identidadActual = "";
-document.querySelectorAll(".chip-identidad").forEach(btn => {
-  btn.classList.remove("is-selected");
-  btn.setAttribute("aria-pressed", "false");
-  btn.blur();
-});
-pintarIdentidad();
-
-document.querySelectorAll(".chip-identidad").forEach(btn => {
-  btn.addEventListener("click", () => {
-    identidadActual = btn.dataset.id;
-    pintarIdentidad();
-  });
-});
-
-document.getElementById("identidadManual").addEventListener("change", (e) => {
-  const valor = e.target.value.trim();
-  if (valor) {
-    identidadActual = valor;
-    pintarIdentidad();
-  }
-});
-
 let manualEntries = [];
 
 function _parsearPegado(texto) {
@@ -462,12 +431,40 @@ async function startJob() {
   const fileInput = document.getElementById("uploadFile");
   const file = fileInput.files[0];
 
-  if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").classList.add("has-error"); document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
   if (!usuario || !password) { alert("Por favor completa usuario y contraseña."); return; }
   if ((!facturasCargadas || !file) && manualEntries.length === 0) {
     alert("Carga el Excel de facturas o agrega al menos una manualmente.");
     return;
   }
+
+  const nit = (usuario.match(/\d{9,12}/) || [""])[0];
+  const sedes = SEDES_LOGIN[nit];
+  if (sedes) {
+    const selector = document.getElementById("sedeLogin");
+    selector.innerHTML = sedes.map(sede => `<option value="${sede}">${sede}</option>`).join("");
+    document.getElementById("sedeModal").style.display = "flex";
+    return;
+  }
+
+  await enviarInicio("");
+}
+
+function cerrarModalSede() {
+  document.getElementById("sedeModal").style.display = "none";
+}
+
+async function confirmarSede() {
+  const ciudad = document.getElementById("sedeLogin").value;
+  cerrarModalSede();
+  await enviarInicio(ciudad);
+}
+
+async function enviarInicio(ciudadLogin) {
+  const usuario = document.getElementById("usuario").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const dlPath = document.getElementById("downloadPath").value.trim();
+  const fileInput = document.getElementById("uploadFile");
+  const file = fileInput.files[0];
 
   document.getElementById("btnStart").disabled = true;
   document.getElementById("logConsole").innerHTML = "";
@@ -478,27 +475,13 @@ async function startJob() {
   const formData = new FormData();
   formData.append("usuario", usuario);
   formData.append("password", password);
-  formData.append("identidad", identidadActual);
   formData.append("download_path", dlPath);
+  formData.append("ciudad_login", ciudadLogin);
   if (facturasCargadas && file) formData.append("file", file);
   if (manualEntries.length > 0) formData.append("manual_entries", JSON.stringify(manualEntries));
 
-  let resp = await fetch(`/api/${EMPRESA}/start`, { method: "POST", body: formData });
-  let data = await resp.json();
-
-  if (!data.ok && data.requiere_confirmacion) {
-    const decision = await solicitarDecisionDuplicados(data);
-    if (!decision) {
-      document.getElementById("btnStart").disabled = false;
-      setStatus("idle");
-      return;
-    }
-    formData.append("confirmar_duplicados", "true");
-    formData.append("decision_redescarga", decision.decision);
-    formData.append("facturas_redescarga", JSON.stringify(decision.selected));
-    resp = await fetch(`/api/${EMPRESA}/start`, { method: "POST", body: formData });
-    data = await resp.json();
-  }
+  const resp = await fetch(`/api/${EMPRESA}/start`, { method: "POST", body: formData });
+  const data = await resp.json();
 
   if (!data.ok) {
     setStatus("error");
@@ -510,8 +493,8 @@ async function startJob() {
   currentIps = data.ips;
   setEmpresaId(data.empresa_id);
   addLog({ts: "--:--:--", msg: `🚀 Proceso iniciado | IPS: ${data.ips} | ${data.total} facturas | Destino: ${data.download_path}`, level: "info"});
-  if (polling) clearTimeout(polling);
-  pollStatus();
+  if (polling) clearInterval(polling);
+  polling = setInterval(pollStatus, 1500);
 }
 
 async function pollStatus() {
@@ -524,15 +507,13 @@ async function pollStatus() {
     const s = await sr.json();
     updateStats(s.stats);
     if (!s.running) {
-      clearTimeout(polling); polling = null;
+      clearInterval(polling); polling = null;
       if (s.error) { setStatus("error"); showError(s.error); } else { setStatus("done"); }
       document.getElementById("btnStart").disabled = false;
       refreshFiles();
       descargarExcelErroresSiHay(s.errores_excel_url);
-      return;
     }
   } catch(e) { console.error(e); }
-  polling = setTimeout(pollStatus, 1500);
 }
 
 function descargarExcelErroresSiHay(url) {

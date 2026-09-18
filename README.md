@@ -1,354 +1,180 @@
 # Descargador de Cartas Glosa — Panel unificado
 
-## Estado actual
+Un solo programa, un solo servicio de Railway, **5 aseguradoras**:
 
-Aplicacion Flask/Python desplegable como un unico servicio en Railway. El
-servicio integra cinco entradas de automatizacion:
-
-| Ruta | Aseguradora | Modulo |
+| Página | Aseguradora | Portal |
 |---|---|---|
-| `/estado` | SIS / Seguros del Estado | `bots/estado_sura.py` |
-| `/sura` | Suramericana | `bots/estado_sura.py` |
-| `/bolivar` | Seguros Bolivar | `bots/bolivar.py` |
-| `/previsora` | Previsora SOAT | `bots/previsora.py` |
-| `/mundial` | Seguros Mundial | `bots/mundial.py` |
-
-Estado y Sura comparten logica y proceso Python, pero tienen rutas, portales,
-configuracion y estados de job separados. Cada bot usa Playwright y conserva
-su progreso en disco.
-
-## Arquitectura y estructura
-
-- `app.py`: crea Flask, registra los blueprints e inicia el vigilante de
-   `progreso.json`.
-- `bots/estado_sura.py`: bots SIS Estado y Sura.
-- `bots/bolivar.py`: automatizacion de Bolivar.
-- `bots/previsora.py`: automatizacion de Previsora.
-- `bots/mundial.py`: automatizacion de Mundial.
-- `bots/catalogo_ips.py`: resolucion centralizada de IPS por NIT y aliases.
-- `bots/historial_db.py`: SQLite local o PostgreSQL cuando existe
-   `DATABASE_URL`.
-- `bots/vigilante_progreso.py`: migra y elimina `progreso.json` abandonados
-   despues de 24 horas; no elimina por si mismo PDFs ni ZIPs.
-- `bots/registro_rutas.py`: registra rutas personalizadas de descarga.
-- `bots/concurrency.py`: limita automatizaciones simultaneas.
-- `templates/`: interfaces de los cuatro paneles y el landing.
-- `static/audit_ui.js`: modal comun para decidir redescargas.
-- `downloads/`: datos locales o persistidos mediante volumen de Railway.
-
-## Funcionalidades verificadas
-
-### Identidad de la persona
-
-Los cuatro endpoints de inicio exigen el campo `identidad` antes de crear un
-job, reservar concurrencia o iniciar Playwright. La interfaz muestra la
-advertencia junto a `¿Quien eres?` y la oculta al seleccionar una persona.
-
-La identidad se guarda como metadata de progreso y en el historial basico de
-descargas. La auditoria completa por ejecucion sigue pendiente de integracion.
-
-### Duplicados historicos
-
-El sistema consulta facturas ya registradas antes de descargarlas. El usuario
-puede elegir:
-
-- no volver a descargar ninguna;
-- volver a descargar todas;
-- seleccionar facturas concretas.
-
-Bolivar y Previsora tambien pueden pausar el job cuando descubren repetidos
-despues de consultar el portal. La decision se envia mediante
-`/api/duplicate-decision` dentro del blueprint correspondiente.
-
-### Progreso y soportes
-
-`progreso.json` es temporal y sirve para reanudar. El historial de descargas
-se registra separadamente. El vigilante de 24 horas migra primero el progreso
-y luego elimina solo `progreso.json`.
-
-La politica actual de PDFs, ZIPs y soportes es manual o propia del flujo del
-bot. No existe una tarea general que los elimine automaticamente por edad.
-Mundial elimina archivos ZIP temporales despues de extraerlos y algunos bots
-eliminan ZIPs parciales obsoletos al generar uno nuevo o el final.
-
-### Suspension de Railway
-
-`railway.json` mantiene `sleepApplication: true`. El landing no realiza
-polling mientras la pestaña esta oculta. Los paneles internos hacen polling
-durante una ejecucion activa para mostrar progreso.
-
-## Base de datos PostgreSQL / Neon
-
-El codigo soporta dos modos:
-
-- `DATABASE_URL` configurada: PostgreSQL/Neon mediante `psycopg2`.
-- sin `DATABASE_URL`: SQLite en `downloads/historial.db`.
-
-La tabla historica original es `descargas`. El inicializador actual crea o
-verifica estas tablas adicionales:
-
-- `ips`: catalogo central con NIT unico y nombre estandar.
-- `ips_alias`: nombres alternativos.
-- `ejecuciones`: estructura preparada para auditar una corrida.
-- `ejecucion_facturas`: estructura preparada para facturas por corrida y
-   redescargas.
-- `errores_ejecucion`: estructura preparada para errores por etapa e intento.
-
-### Estado de Neon verificado por evidencia externa
-
-El 2026-09-15 el usuario ejecuto la migracion en Neon y reporto que las
-tablas fueron creadas. La captura compartida muestra `ips` con 21 registros y
-las tablas nuevas. La conexion remota no puede consultarse desde este entorno,
-por lo que los siguientes puntos quedan pendientes de verificacion directa:
-
-- que todos los registros de `descargas` tengan `ips_id`;
-- que no existan duplicados por `(aseguradora, ips_id, factura)`;
-- que el indice unico `ux_descargas_aseguradora_ips_factura` tenga la
-   definicion esperada;
-- que la restriccion antigua basada en `ips_nombre` siga o haya sido retirada.
-
-No eliminar la restriccion antigua hasta completar esa verificacion y probar
-una ejecucion real.
-
-### Estado de la auditoria
-
-Los cuatro endpoints de inicio crean una fila en `ejecuciones` y los flujos
-cierran esa fila con estado y contadores al finalizar. Las descargas exitosas
-se escriben en `descargas` y en `ejecucion_facturas` cuando se guarda el
-progreso. Los errores criticos emitidos por los jobs se escriben en
-`errores_ejecucion`.
-
-La auditoria por factura de errores de portal todavia es parcial: algunos
-errores conservan detalle en memoria, Excel y logs, pero no todos incluyen aun
-factura y etapa especifica en `errores_ejecucion`. Queda como mejora pendiente.
-
-Cuando `DATABASE_URL` esta definida y PostgreSQL no conecta, la aplicacion ya
-no cambia silenciosamente a SQLite: el arranque falla para evitar aparentar
-que el historial quedo registrado en Neon cuando no fue asi.
-
-Telegram no forma parte del proyecto actual ni de esta documentacion.
-
-## Configuracion y despliegue
-
-### Local
-
-`iniciar.bat` prepara el entorno, instala dependencias y Chromium, y abre el
-panel local en `http://localhost:8080`.
-
-### Railway
-
-- Builder: `Dockerfile`.
-- Servidor: Gunicorn, un worker y 24 threads.
-- Puerto: variable `PORT`, con valor predeterminado 8080.
-- `sleepApplication: true`.
-- Para conservar descargas se requiere un volumen montado en `/app/downloads`.
-- `DATABASE_URL` debe apuntar a Neon si se desea historial PostgreSQL.
-
-No se documentan valores de contrasenas, tokens ni secretos.
-
-## Validaciones realizadas
-
-- Compilacion de todos los modulos Python.
-- Rechazo de peticiones sin identidad en los cuatro bots.
-- Resolucion de IPS por NIT, alias y caso `IPS_NO_IDENTIFICADA`.
-- Creacion local del esquema de tablas de historial.
-- Verificacion de `sleepApplication: true`.
-- Revision de rutas de eliminacion de progreso, PDF, ZIP y carpetas.
-- Confirmacion de que no hay integracion activa de Telegram.
-
-## Historial de cambios
-
-### Estado anterior documentado — baseline
-
-El README anterior describia la arquitectura de los cinco bots, el uso de
-Docker/Playwright, el despliegue en Railway, el volumen persistente y la
-version unificada de Playwright. Ese contenido se conserva conceptualmente en
-las secciones actuales, corregido donde no coincide con los archivos
-presentes.
-
-### 2026-09-15 — Identidad obligatoria, redescargas y catalogo IPS
-
-#### Codigo
-
-- Se agrego `bots/catalogo_ips.py`.
-- Se agregaron tablas de catalogo y auditoria al inicializador de
-   `bots/historial_db.py`.
-- Se agrego registro basico de descargas al guardar progreso.
-- Se corrigio la lectura de solicitudes no JSON para evitar respuestas 415 en
-   formularios normales.
-
-#### Base de datos
-
-- Se agregaron `ips`, `ips_alias`, `ejecuciones`, `ejecucion_facturas` y
-   `errores_ejecucion` al esquema inicializable.
-- Neon fue actualizado por el usuario con esas tablas y el catalogo inicial
-   de 21 IPS, segun evidencia compartida.
-- Se agregaron columnas de trazabilidad a `descargas` en Neon, segun el SQL
-   ejecutado por el usuario.
-- El indice unico por `(aseguradora, ips_id, factura)` fue creado o ya existia,
-   segun el mensaje de PostgreSQL `already exists, skipping`.
-- Pendiente de verificacion: migracion completa de todos los registros y
-   retiro de la restriccion antigua por `ips_nombre`.
-
-#### Frontend / UI
-
-- Se mejoro el bloque `¿Quien eres?` en las cuatro plantillas.
-- Se agrego advertencia contextual cuando falta la persona.
-- Se creo `static/audit_ui.js` con el modal de facturas repetidas.
-- Se sustituyeron confirmaciones simples por decisiones explicitas de
-   redescarga.
-- El landing deja de hacer polling cuando la pestaña esta oculta.
-
-#### Backend
-
-- Los cuatro endpoints de inicio rechazan identidad vacia.
-- Las decisiones de duplicados se aplican antes de la descarga.
-- Bolivar y Previsora exponen una pausa para duplicados detectados despues de
-   consultar el portal.
-- El registro historico basico se actualiza sin depender de la eliminacion de
-   `progreso.json`.
-
-### 2026-09-15 — Auditoria de persistencia y correcciones de contratos
-
-#### Codigo
-
-- `historial_db.py` fue reconstruido para que la migracion de `descargas` sea
-   idempotente tambien en SQLite, agregando las columnas de IPS si la tabla ya
-   existia.
-- Se agregaron escrituras de ejecucion, facturas por ejecucion, errores
-   criticos y cierre de ejecucion en los cuatro bots.
-- La identidad persistida de una descarga incluye `ips_id`, `ips_nit`, nombre
-   detectado y metodo de identificacion cuando el catalogo puede resolverla.
-- Se corrigio el caso en que una segunda peticion confirmaba duplicados pero
-   no aplicaba la decision de ninguna/seleccionadas.
-- Se corrigio la obtencion del ID de ejecucion en PostgreSQL usando `RETURNING
-   id`; SQLite conserva `lastrowid`.
-- Se elimino el fallback silencioso de Neon a SQLite cuando `DATABASE_URL`
-   esta configurada.
-- El guardado de progreso ahora pasa la identidad IPS resuelta por NIT al
-   historial `descargas`, evitando volver a resolverla solo por nombre cuando
-   el bot ya conocia el NIT.
-- Se corrigieron los endpoints de control para aceptar solicitudes sin JSON
-   sin responder 415 innecesariamente.
-- Estado/Sura y Previsora ahora hacen polling secuencial y dejan de sondear
-   al terminar, igual que Bolivar y Mundial.
-
-#### Verificacion
-
-- Todos los modulos Python compilan.
-- Se probó desde una SQLite vacia el ciclo de IPS, ejecucion, descarga,
-   `ejecucion_facturas`, error y cierre.
-- Se verifico que una `DATABASE_URL` invalida no se degrada silenciosamente.
-- Se probaron los cuatro guardas de identidad y los endpoints de reset sin
-   obtener 415.
-
-#### Pendientes
-
-- Probar la ruta PostgreSQL real con `psycopg2` instalado y la `DATABASE_URL`
-   productiva de Neon.
-- Registrar todos los errores de factura con etapa exacta, no solo errores
-   criticos emitidos por el logger.
-- Verificar directamente en Neon los indices, restricciones y migracion de
-   filas antiguas.
-
-### 2026-09-15 — Correccion de arranque en Railway por nombres de columnas
-
-#### Problema encontrado
-
-Railway no podia iniciar Gunicorn. Neon ya tenia `ejecuciones` creada con las
-columnas `fecha_inicio` y `fecha_fin`, pero el codigo intentaba crear el indice
-`idx_ejecuciones_persona` usando una columna inexistente llamada `inicio`.
-PostgreSQL produjo `psycopg2.errors.UndefinedColumn` y el worker se cerraba al
-importar `app.py`.
-
-#### Correccion
-
-- El esquema inicializable usa ahora `fecha_inicio` y `fecha_fin`.
-- El indice usa `(persona, fecha_inicio)`.
-- El INSERT de ejecuciones usa `fecha_inicio`.
-- El cierre de ejecuciones actualiza `fecha_fin`.
-- Se verifico compatibilidad local contra una tabla preexistente con los
-   nombres de Neon.
-
-#### Tablas actualmente creadas en Neon
-
-Segun las capturas y SQL ejecutado durante esta configuracion, el esquema
-contiene:
-
-| Tabla | Funcion |
-|---|---|
-| `descargas` | Resumen historico compatible de facturas descargadas. |
-| `ips` | Catalogo central de IPS con NIT unico y nombre estandar. |
-| `ips_alias` | Alias de nombres de IPS. |
-| `ejecuciones` | Una fila por corrida, con persona, bot, aseguradora, IPS, periodo, estado y contadores. Usa `fecha_inicio`/`fecha_fin`. |
-| `ejecucion_facturas` | Facturas participantes en cada ejecucion y redescargas. |
-| `errores_ejecucion` | Errores asociados a ejecuciones, factura, etapa e intento. |
-
-La existencia remota de cada columna se basa en la evidencia compartida y en
-el error de Railway. La comprobacion directa desde este entorno queda
-`Pendiente de verificacion`.
-
-### 2026-09-15 — Rediseño visual del selector de identidad
-
-#### Frontend / UI
-
-- Se reemplazo el bloque visual antiguo de `¿Quién eres?` en los cuatro
-   paneles: Estado/Sura, Bolivar, Previsora y Mundial.
-- Se agrego `static/identity.css` como hoja compartida para evitar que cada
-   plantilla mantenga un diseño divergente.
-- El nuevo componente incluye icono, texto de contexto, tarjetas de opcion,
-   iconos por persona, marca visual de seleccion, foco accesible, campo para
-   otra persona y estado de error destacado.
-- La logica existente ahora cambia clases (`is-selected` y `has-error`) en
-   lugar de imponer estilos inline que ocultaban el nuevo diseño.
-
-#### Resultado
-
-- La seleccion conserva su obligatoriedad y la advertencia sigue apareciendo
-   junto al campo.
-- El diseño deja de ser un par de botones planos dentro de un contenedor gris
-   y pasa a ser un bloque visual consistente con el panel.
-- Las cuatro plantillas cargan `/static/identity.css`.
-
-#### Verificacion
-
-- No quedan errores reportados en las cuatro plantillas ni en `identity.css`.
-- Se verifico que el bloque antiguo de identidad fue reemplazado en las cuatro
-   pantallas.
-
-### 2026-09-15 — Identidad sin selección predeterminada
-
-- Se elimino la persistencia de `identidadUsuario` en `localStorage` de los
-   cuatro paneles.
-- Cada apertura o recarga inicia con `identidadActual = ""`, sin Salud Net ni
-   Campbell seleccionados.
-- La persona debe elegir explícitamente una opción en cada nueva sesión de la
-   pantalla antes de iniciar una descarga.
-- La validación de frontend y backend se conserva; si no hay selección, el
-   proceso no comienza.
-
-#### Configuracion / despliegue
-
-- Se mantiene `sleepApplication: true`.
-- Telegram queda fuera del alcance y no existe integracion activa.
-
-#### Resultado y pendientes
-
-- El sistema ya evita iniciar sin persona y evita descargar repetidos sin una
-   decision explicita.
-- La auditoria detallada por ejecucion, factura, intento y error aun no esta
-   conectada completamente a los cuatro bots.
-
-## Regla de mantenimiento de esta documentacion
-
-Este README es la fuente oficial de documentacion e historial tecnico del
-proyecto. Cada cambio futuro debe:
-
-1. verificarse contra el estado real del repositorio;
-2. implementarse y validarse;
-3. revisar si afecta Neon, Railway, configuracion o dependencias;
-4. agregar una entrada cronologica a este historial sin borrar entradas
-    anteriores;
-5. marcar como `Pendiente de verificacion` todo lo que no pueda comprobarse.
-
-Ningun cambio se considera completo hasta actualizar este README.
+| `/estado` | SIS / Seguros del Estado | soatestado.sis.co |
+| `/sura` | Suramericana | soatsura.sis.co |
+| `/bolivar` | Seguros Bolívar | (portal Activa IT) |
+| `/previsora` | Previsora SOAT | (portal Activa IT) |
+| `/mundial` | Seguros Mundial | a2m-mundial.iqdigital.com.co |
+
+La página principal (`/`) muestra las 5 como tarjetas para entrar a cada una.
+
+## Arquitectura
+
+Cada bot vive en su propio módulo dentro de `bots/` (`estado_sura.py`,
+`bolivar.py`, `previsora.py`, `mundial.py`) como un **Flask Blueprint**
+independiente, montado bajo su propia ruta. Estado y Sura comparten un mismo
+módulo porque su lógica es idéntica (mismo tipo de portal); los otros tres
+son aplicaciones grandes y maduras que ya existían por separado — se
+tocó lo mínimo posible para no arriesgar romper algo que ya funciona:
+
+- `@app.route` → `@bp.route` (con `url_prefix` por bot)
+- Plantillas renombradas (`bolivar_index.html`, etc.) para no chocar entre sí
+- Estáticos renombrados (`logo_bolivar.png`, `favicon_bolivar.ico`, etc.)
+- Carpeta de descargas separada por bot (`downloads/<bot>/...`)
+- Todas las llamadas del frontend (`fetch('/api/...')`) se reescribieron
+  con el prefijo correspondiente (`/bolivar/api/...`, etc.)
+
+Cada bot mantiene su propio estado en memoria (`jobs = {}` o `job_states`),
+completamente aislado de los demás — se pueden correr varios a la vez sin
+que se pisen.
+
+## ⚠️ Cambios que hice y debes revisar
+
+1. **Autenticación obligatoria por sesión**. El panel maneja documentos
+   confidenciales de varias aseguradoras. Todas las páginas, APIs, acciones
+   de los bots y descargas requieren una sesión iniciada en `/login`.
+   Configura en Railway o en tu entorno local:
+   - `PANEL_USER` = usuario autorizado
+   - `PANEL_PASSWORD_HASH` = hash generado con Werkzeug
+   - `SESSION_SECRET_KEY` = una clave aleatoria larga para firmar sesiones
+
+   Para producción se recomienda crear una cuenta diferente para cada una de
+   las 2 o 3 personas. Se pueden configurar varias cuentas con `PANEL_USERS`,
+   usando un objeto JSON cuyos valores sean hashes:
+
+   ```text
+   PANEL_USERS={"Ana":"HASH_ANA","Carlos":"HASH_CARLOS","Laura":"HASH_LAURA"}
+   ```
+
+   `PANEL_USERS` reemplaza a `PANEL_USER` y `PANEL_PASSWORD_HASH` cuando se
+   define. Cada persona podrá cerrar su propia sesión sin afectar las demás.
+
+   Para generar el hash sin guardar la contraseña en el código:
+
+   ```powershell
+   python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('TU_CONTRASENA'))"
+   ```
+
+   La salida de ese comando debe configurarse como `PANEL_PASSWORD_HASH`.
+   Sin estas tres variables, el acceso permanece bloqueado por seguridad.
+
+   **Credenciales locales de prueba:**
+   - Usuario: `Snet`
+   - Contraseña: `1234`
+
+   Estas credenciales están configuradas únicamente en `iniciar.bat` para
+   pruebas locales. En producción se deben reemplazar por las variables
+   seguras de Railway (`PANEL_USER`, `PANEL_PASSWORD_HASH` y
+   `SESSION_SECRET_KEY`). No se debe subir una contraseña de producción al
+   código ni al repositorio.
+
+   El login permite como máximo **5 intentos fallidos consecutivos por
+   origen**. Al superar el límite, el acceso queda bloqueado temporalmente
+   durante 15 minutos. El bloqueo se restablece automáticamente al terminar
+   ese tiempo o al reiniciar la aplicación local. En Railway, para forzar el
+   restablecimiento se puede reiniciar el servicio; si el problema persiste,
+   se deben revisar las variables de entorno y desplegar nuevamente.
+
+   **Protección de enlaces directos y visibilidad compartida**. Los enlaces
+   directos a cualquier aseguradora, por ejemplo `/estado`, `/bolivar` o
+   `/previsora`, también están protegidos desde el backend. Sin sesión se
+   redirigen obligatoriamente a `/login`; las APIs de los bots no entregan
+   información ni permiten iniciar procesos sin una sesión válida.
+
+   El estado de ejecución, las IPS procesadas y el progreso pertenecen al bot
+   y se mantienen compartidos entre las sesiones autenticadas. Por eso
+   cualquier usuario autorizado puede consultar el progreso de otro usuario,
+   lo que permite coordinar qué IPS están ocupadas y evitar duplicar trabajo.
+
+3. **`headless=True` + `--no-sandbox` en los 5 bots.** Bolívar, Previsora y
+   Mundial ya traían `headless=True` (listos para Railway). Estado/Sura
+   todavía tenía `headless=False` (pensado para tu PC) — lo cambié, porque
+   un servidor sin pantalla no puede abrir un navegador visible. También
+   agregué `--no-sandbox --disable-dev-shm-usage` a los que no lo tenían
+   (Mundial ya lo traía) — es casi siempre necesario para que Chromium
+   corra dentro de un contenedor Docker.
+
+4. **Nota sobre los logos**: se revisaron los 5 archivos `logo_*.png` de
+   `static/` y son distintos entre sí (Bolívar, Previsora y Mundial tienen
+   cada uno su propio logo real, incluyendo el de Mundial con el texto
+   "seguros mundial" visible) — no se encontró ningún logo genérico o
+   placeholder compartido entre ellos. No se necesitó ningún cambio aquí.
+
+5. **`sleepApplication: true`** en `railway.json` — se mantiene así a propósito
+   (decisión ya tomada): ahorra costo dejando que Railway "duerma" la app
+   sin tráfico, con el riesgo aceptado de que un proceso largo se corte si
+   la duerme a mitad de camino. El volumen persistente (ver más abajo)
+   ayuda a que ese corte no borre lo ya descargado.
+
+6. **Versión de Playwright unificada** (`>=1.49.0`). Bolívar y Previsora
+   traían fijado `playwright==1.44.0`; como todos los bots corren en el
+   mismo entorno Python, solo puede haber una versión instalada. Usé la
+   misma que ya está probada en Estado/Sura. No debería romper nada (las
+   funciones que usan son estables entre esas versiones), pero conviene que
+   pruebes Bolívar y Previsora con atención la primera vez.
+
+## Cómo correrlo localmente
+
+`iniciar.bat` — crea el entorno virtual, instala dependencias y Chromium,
+y abre `http://localhost:8080`.
+
+## Cómo desplegarlo en Railway
+
+1. Sube esta carpeta a un repo de GitHub (o usa `railway up` desde la CLI).
+2. En Railway, configura `PANEL_USER`, `PANEL_PASSWORD_HASH` y
+   `SESSION_SECRET_KEY` (ver punto 1 arriba).
+3. Si necesitas que los PDFs/ZIPs persistan entre reinicios, agrega un
+   **Volume** de Railway montado en `/app/downloads` (si no, Railway borra
+   el disco del contenedor en cada redeploy).
+4. Railway detecta el `Dockerfile` automáticamente.
+
+## Estructura
+
+```
+app.py                    <- panel principal + registro de los 5 blueprints
+bots/
+  estado_sura.py          <- SIS Estado + Suramericana
+  bolivar.py              <- Seguros Bolívar
+  previsora.py            <- Previsora SOAT
+  mundial.py              <- Seguros Mundial
+templates/
+   login.html               <- inicio de sesión obligatorio
+  landing.html            <- página de inicio con las 5 tarjetas
+  estado_sura_index.html
+  bolivar_index.html
+  previsora_index.html
+  mundial_index.html
+static/
+   favicon.ico              <- imagen de marca usada junto a Salud Net en el login
+   logo_estado.png, logo_sura.png
+  logo_bolivar.png, favicon_bolivar.ico
+  logo_previsora.png, favicon_previsora.ico
+  logo_mundial.png, favicon_mundial.ico
+downloads/
+  estado/  sura/  bolivar/  previsora/  mundial/
+Dockerfile, railway.json, requirements.txt, .gitignore, iniciar.bat
+```
+
+## Cambios recientes (validación de consecutivos / Campbell / integridad)
+
+- **Excel de consecutivos (Mundial)**: la detección de encabezado ya no depende
+  solo de palabras como "consecutiv"/"radicad". Se valida la **estructura real**
+  del dato (ej. `DEV-202606001120`). Encabezados truncados como `Cons` se
+  ignoran y nunca se procesan como radicados. Solo se aceptan valores que
+  cumplan el patrón de consecutivo válido.
+- **Campbell**: se mantienen las dos entidades separadas por NIT
+  (`900002780` FUNDACION CAMPBELL con 5 sedes; `900558595` FUNDACION MEDICA
+  CAMPBELL con 2 sedes). La selección de sede se valida en backend contra el
+  NIT; no se mezclan sedes entre entidades.
+- **Trauma del Valle** (`901149757`) resuelto a `UNIDAD_MEDICA_DE_TRAUMA_VALLE_SALUD`.
+- **Progreso / duplicados / Excel de errores / reintentos / headless**: se
+  conservan las implementaciones existentes del proyecto (progreso.json,
+  Excel de errores por proceso, reintentos largos, headless fijo para Railway).
+- **Base de datos Neon**: el esquema proporcionado (descargas, ejecuciones,
+  ips, etc.) se respeta; este panel unificado opera con estado en memoria y
+  archivos locales de progreso. No se alteró el esquema.
+- Se añadió `.gitignore` completo (sin excluir el propio `.gitignore`).

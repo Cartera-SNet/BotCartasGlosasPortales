@@ -7,7 +7,6 @@
 <title>Activa IT — Descargador Cartas Glosa Previsora</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-<link rel="stylesheet" href="/static/identity.css">
 <style>
   :root {
     --bg-body: #f5f7fc;
@@ -698,17 +697,6 @@
           <span>Descarga: <strong>Envios_D</strong> y <strong>ActaDevolucion</strong></span>
         </div>
 
-        <div class="form-group identity-panel" id="identidadBox">
-          <div class="identity-heading"><span class="identity-icon"><i class="fas fa-user-check"></i></span><span class="identity-title">¿Quién eres?</span></div>
-          <p class="identity-subtitle">Selecciona tu identidad para registrar esta ejecución.</p>
-          <div class="identity-options">
-            <button type="button" class="chip-identidad identity-option" data-id="SaludNet"><i class="fas fa-building identity-option-icon"></i>Salud Net<span class="identity-check"><i class="fas fa-check"></i></span></button>
-            <button type="button" class="chip-identidad identity-option" data-id="Campbell"><i class="fas fa-hospital identity-option-icon"></i>Campbell<span class="identity-check"><i class="fas fa-check"></i></span></button>
-          </div>
-          <input type="text" id="identidadManual" class="identity-manual" placeholder="Otra persona (opcional)" autocomplete="off">
-          <div id="identidadError" class="identity-error" role="alert"><i class="fas fa-triangle-exclamation"></i> Selecciona quién eres antes de iniciar el proceso.</div>
-        </div>
-
         <button class="btn-primary" id="btnStart" onclick="startJob()">
           <i class="fas fa-rocket"></i> Iniciar descarga
         </button>
@@ -829,7 +817,6 @@
   </div>
 </div>
 
-<script src="/static/audit_ui.js"></script>
 <script>
 // ── Períodos con soporte para rangos ─────────────────────────────────────────
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -932,49 +919,6 @@ document.getElementById("uploadFile").addEventListener("change", function() {
 // ── Job ─────────────────────────────────────────────────────────────────────────
 let polling = null;
 let logCount = 0;
-  let duplicatePromptShown = false;
-let identidadActual = "";
-
-function pintarIdentidad() {
-  document.querySelectorAll(".chip-identidad").forEach(btn => {
-    const activo = btn.dataset.id === identidadActual;
-    btn.classList.toggle("is-selected", activo);
-    btn.setAttribute("aria-pressed", activo ? "true" : "false");
-  });
-  const manual = document.getElementById("identidadManual");
-  const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
-  manual.value = esChip ? "" : identidadActual;
-  const error = document.getElementById("identidadError");
-  if (identidadActual && error) { error.style.display = "none"; document.getElementById("identidadBox").classList.remove("has-error"); }
-}
-
-// Garantiza que en cada carga ninguna chip venga "seleccionada por default".
-// identidadActual arranca en "" y pintarIdentidad() limpia cualquier estado
-// residual (clases/aria) que el navegador o una extensión pudiera haber
-// dejado en el DOM.
-identidadActual = "";
-document.querySelectorAll(".chip-identidad").forEach(btn => {
-  btn.classList.remove("is-selected");
-  btn.setAttribute("aria-pressed", "false");
-  btn.blur();
-});
-pintarIdentidad();
-
-document.querySelectorAll(".chip-identidad").forEach(btn => {
-  btn.addEventListener("click", () => {
-    identidadActual = btn.dataset.id;
-    pintarIdentidad();
-  });
-});
-
-document.getElementById("identidadManual").addEventListener("change", (e) => {
-  const valor = e.target.value.trim();
-  if (valor) {
-    identidadActual = valor;
-    pintarIdentidad();
-  }
-});
-
 let manualEntries = [];
 
 function _parsearPegado(texto) {
@@ -1048,7 +992,6 @@ async function startJob() {
     const periodoInput = document.getElementById("periodoCustom").value.trim();
     const dlPath = document.getElementById("downloadPath").value.trim();
 
-    if (!identidadActual) { document.getElementById("identidadError").style.display = "block"; document.getElementById("identidadBox").classList.add("has-error"); document.getElementById("identidadBox").scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if (!usuario || !password || !periodoInput) {
         alert("Por favor completa usuario, contraseña y período.");
         return;
@@ -1070,7 +1013,6 @@ async function startJob() {
     fd.append("usuario", usuario);
     fd.append("password", password);
     fd.append("periodo", periodoInput);
-    fd.append("identidad", identidadActual);
     fd.append("download_path", dlPath);
     fd.append("reintentos_largos", document.getElementById("reintentosLargos").checked ? "true" : "false");
     const fi = document.getElementById("uploadFile").files[0];
@@ -1081,17 +1023,7 @@ async function startJob() {
         method: "POST",
         body: fd
     });
-    let data = await resp.json();
-
-    if (!data.ok && data.requiere_confirmacion) {
-      const decision = await solicitarDecisionDuplicados(data);
-      if (!decision) { setStatus("idle"); document.getElementById("btnStart").disabled = false; return; }
-      fd.append("confirmar_duplicados", "true");
-      fd.append("decision_redescarga", decision.decision);
-      fd.append("facturas_redescarga", JSON.stringify(decision.selected));
-      const retry = await fetch("/previsora/api/start", { method: "POST", body: fd });
-      data = await retry.json();
-    }
+    const data = await resp.json();
 
     if (!data.ok) {
         setStatus("error");
@@ -1105,8 +1037,8 @@ async function startJob() {
         ? `Rango: ${periodos[0]} → ${periodos[periodos.length - 1]} (${periodos.length} períodos)`
         : `Período: ${periodos[0]}`;
     addLog({ts: "--:--:--", msg: `🚀 Proceso iniciado | ${periodoInfo} | Destino: ${data.download_path}`, level: "info"});
-    if (polling) clearTimeout(polling);
-    pollStatus();
+    if (polling) clearInterval(polling);
+    polling = setInterval(pollStatus, 1500);
 }
 
 async function pollStatus() {
@@ -1118,13 +1050,8 @@ async function pollStatus() {
         const sr = await fetch(`/previsora/api/status?empresa_id=${encodeURIComponent(currentEmpresaId)}`);
         const s = await sr.json();
         updateStats(s.stats);
-        if (s.duplicados_pendientes && !duplicatePromptShown) {
-          duplicatePromptShown = true;
-          const decision = await solicitarDecisionDuplicados(s.duplicados_pendientes);
-            await fetch('/previsora/api/duplicate-decision', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({empresa_id:currentEmpresaId, decision:decision ? decision.decision : 'ninguna', selected:decision ? decision.selected : []})});
-        }
         if (!s.running) {
-            clearTimeout(polling);
+            clearInterval(polling);
             polling = null;
             if (s.error) {
                 setStatus("error");
@@ -1135,12 +1062,10 @@ async function pollStatus() {
             document.getElementById("btnStart").disabled = false;
             refreshFiles();
             descargarExcelErroresSiHay(s.errores_excel_url);
-            return;
         }
     } catch(e) {
         console.error(e);
     }
-    polling = setTimeout(pollStatus, 1500);
 }
 
 function descargarExcelErroresSiHay(url) {

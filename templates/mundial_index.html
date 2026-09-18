@@ -7,7 +7,6 @@
 <title>A3M — Mundial de Seguros</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-<link rel="stylesheet" href="/static/identity.css">
 <style>
   :root {
     --bg-body: #f4f7fb;
@@ -258,17 +257,6 @@
           <span>El login tiene <strong>reCAPTCHA</strong>: se abrirá el navegador con tus datos cargados; <strong>resuelve el captcha y presiona INGRESAR</strong> y el proceso continúa solo.</span>
         </div>
 
-        <div class="form-group identity-panel" id="identidadBox">
-          <div class="identity-heading"><span class="identity-icon"><i class="fas fa-user-check"></i></span><span class="identity-title">¿Quién eres?</span></div>
-          <p class="identity-subtitle">Selecciona tu identidad para registrar esta ejecución.</p>
-          <div class="identity-options">
-            <button type="button" class="chip-identidad identity-option" data-id="SaludNet"><i class="fas fa-building identity-option-icon"></i>Salud Net<span class="identity-check"><i class="fas fa-check"></i></span></button>
-            <button type="button" class="chip-identidad identity-option" data-id="Campbell"><i class="fas fa-hospital identity-option-icon"></i>Campbell<span class="identity-check"><i class="fas fa-check"></i></span></button>
-          </div>
-          <input type="text" id="identidadManual" class="identity-manual" placeholder="Otra persona (opcional)" autocomplete="off">
-          <div id="identidadError" class="identity-error" role="alert"><i class="fas fa-triangle-exclamation"></i> Selecciona quién eres antes de iniciar el proceso.</div>
-        </div>
-
         <button class="btn-primary" id="btnStart" onclick="startJob()">
           <i class="fas fa-rocket"></i> Iniciar descarga
         </button>
@@ -475,47 +463,7 @@
   </div>
 </div>
 
-<script src="/static/audit_ui.js"></script>
 <script>
-let identidadActual = "";
-
-function pintarIdentidad() {
-  document.querySelectorAll(".chip-identidad").forEach(btn => {
-    const activo = btn.dataset.id === identidadActual;
-    btn.classList.toggle("is-selected", activo);
-    btn.setAttribute("aria-pressed", activo ? "true" : "false");
-  });
-  const manual = document.getElementById("identidadManual");
-  const esChip = ["SaludNet", "Campbell"].includes(identidadActual);
-  manual.value = esChip ? "" : identidadActual;
-  const error = document.getElementById("identidadError");
-  if (identidadActual && error) { error.style.display = "none"; document.getElementById("identidadBox").classList.remove("has-error"); }
-}
-
-// Garantiza que en cada carga ninguna chip venga "seleccionada por default".
-identidadActual = "";
-document.querySelectorAll(".chip-identidad").forEach(btn => {
-  btn.classList.remove("is-selected");
-  btn.setAttribute("aria-pressed", "false");
-  btn.blur();
-});
-pintarIdentidad();
-
-document.querySelectorAll(".chip-identidad").forEach(btn => {
-  btn.addEventListener("click", () => {
-    identidadActual = btn.dataset.id;
-    pintarIdentidad();
-  });
-});
-
-document.getElementById("identidadManual").addEventListener("change", (e) => {
-  const valor = e.target.value.trim();
-  if (valor) {
-    identidadActual = valor;
-    pintarIdentidad();
-  }
-});
-
 let polling = null;
 let logCount = 0;
 let cargados = [];
@@ -594,7 +542,6 @@ async function startJob() {
   const lote = document.getElementById('lote').value.trim();
   const valores = getValoresTexto();
 
-  if (!identidadActual) { document.getElementById('identidadError').style.display = 'block'; document.getElementById('identidadBox').classList.add('has-error'); document.getElementById('identidadBox').scrollIntoView({behavior:'smooth', block:'center'}); return; }
   if (!usuario || !password) { alert('Digite usuario y contraseña.'); return; }
   if (parseValores(valores).length === 0) { alert('Carga el Excel o pega al menos un consecutivo.'); return; }
 
@@ -604,28 +551,12 @@ async function startJob() {
   setStatus('running');
   document.getElementById('errorAlert').style.display = 'none';
 
-  let resp = await fetch('/mundial/api/start', {
+  const resp = await fetch('/mundial/api/start', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual })
+    body: JSON.stringify({ usuario, password, lote, valores })
   });
-  let data = await resp.json();
-
-  if (!data.ok && data.requiere_confirmacion) {
-    const decision = await solicitarDecisionDuplicados(data);
-    if (!decision) {
-      document.getElementById('btnStart').disabled = false;
-      setStatus('idle');
-      return;
-    }
-    resp = await fetch('/mundial/api/start', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, confirmar_duplicados: true, decision_redescarga: decision.decision, facturas_redescarga: decision.selected })
-    });
-    data = await resp.json();
-  }
-
+  const data = await resp.json();
   if (!data.ok) {
     setStatus('error'); showError(data.error);
     document.getElementById('btnStart').disabled = false;
