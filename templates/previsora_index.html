@@ -1109,7 +1109,23 @@ async function startJob() {
     pollStatus();
 }
 
+// Reactiva el sondeo en cuanto la pestaña vuelve a estar visible --
+// necesario porque arriba se detuvo por completo mientras estaba oculta.
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !polling) {
+        pollStatus();
+    }
+});
+
 async function pollStatus() {
+    // Guardia extra: si un setTimeout ya programado desde el ciclo anterior
+    // llega a disparar justo cuando la pestaña acaba de ocultarse, se sale
+    // aquí mismo sin generar ninguna petición nueva -- no basta con revisar
+    // esto solo al final, porque ese timeout ya estaba en cola desde antes.
+    if (document.hidden) {
+        polling = null;
+        return;
+    }
     try {
         const resp = await fetch(`/previsora/api/logs?since=${logCount}&empresa_id=${encodeURIComponent(currentEmpresaId)}`);
         const data = await resp.json();
@@ -1140,7 +1156,17 @@ async function pollStatus() {
     } catch(e) {
         console.error(e);
     }
-    polling = setTimeout(pollStatus, 1500);
+    if (document.hidden) {
+        // La pestaña está en segundo plano: NO se reprograma el siguiente
+        // sondeo. Esto es necesario para que Railway pueda detectar
+        // inactividad real y dormir el contenedor (sleepApplication) --
+        // un setTimeout/setInterval que nunca se detiene genera tráfico
+        // HTTP constante y el servicio nunca duerme, sin importar cuánto
+        // tiempo pase. Se reactiva solo abajo, en 'visibilitychange'.
+        polling = null;
+    } else {
+        polling = setTimeout(pollStatus, 1500);
+    }
 }
 
 function descargarExcelErroresSiHay(url) {
