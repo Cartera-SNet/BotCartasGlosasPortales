@@ -16,6 +16,9 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file
 from . import concurrency
+from . import historial_db
+from . import registro_rutas
+from .catalogo_ips import resolver, validar_identidad
 from io import BytesIO
 
 try:
@@ -114,6 +117,8 @@ def new_job_state():
         "descargas_exitosas": [],
         "facturas_permitidas": [],
         "errores_excel_url": None,
+        "duplicados_pendientes": None,
+        "duplicate_event": threading.Event(),
     }
 
 
@@ -200,6 +205,14 @@ def log(job, msg, level="info"):
         logger.error(msg)
     else:
         logger.info(msg)
+    if level == "error" and job is not None:
+        try:
+            historial_db.registrar_error_ejecucion(
+                job["state"].get("ejecucion_id"), None, "bolivar", "Bolívar",
+                job["state"].get("ips_identity"), "bot", msg, "log", True, 1, "error"
+            )
+        except Exception:
+            pass
 
 def reset_state(job):
     with job["lock"]:
@@ -249,10 +262,6 @@ def generar_zip_parcial(job):
     archivos_a_incluir = list(ips_dir.rglob("*.pdf"))
     if excel_parcial_path and excel_parcial_path.exists():
         archivos_a_incluir.append(excel_parcial_path)
-    # Excel dedicado SOLO con errores persistentes (recargable directo al bot).
-    excel_solo_errores = generar_excel_solo_errores(job["dl_dir"], job["ips_nombre"], errores)
-    if excel_solo_errores and excel_solo_errores.exists():
-        archivos_a_incluir.append(excel_solo_errores)
     errores_dir = ips_dir / "Errores"
     if errores_dir.exists():
         archivos_a_incluir.extend(errores_dir.rglob("*"))
@@ -291,12 +300,17 @@ def crear_zip_completo(job, dl_dir, periodo, ips_nombre):
                 if errores_dir.exists():
                     for err_file in errores_dir.rglob("*"):
                         zf.write(err_file, arcname=str(err_file.relative_to(dl_dir)))
-                # Excel dedicado SOLO con errores persistentes (recargable).
+                # Excel dedicado SOLO con errores persistentes (recargable
+                # directo al bot, sin ambigüedad de hoja activa como el
+                # reporte combinado, que tiene "Descargadas" como hoja
+                # activa y podría reprocesar facturas que ya bajaron bien).
                 with job["lock"]:
                     errores_persistentes = job["state"]["errores_detalle"].copy()
-                excel_solo_errores = generar_excel_solo_errores(dl_dir, ips_nombre, errores_persistentes)
-                if excel_solo_errores and excel_solo_errores.exists():
-                    zf.write(excel_solo_errores, arcname=str(excel_solo_errores.relative_to(dl_dir)))
+                excel_solo_errores_nombre = generar_excel_solo_errores(dl_dir / ips_nombre, ips_nombre, errores_persistentes)
+                if excel_solo_errores_nombre:
+                    excel_solo_errores_path = dl_dir / ips_nombre / excel_solo_errores_nombre
+                    if excel_solo_errores_path.exists():
+                        zf.write(excel_solo_errores_path, arcname=str(excel_solo_errores_path.relative_to(dl_dir)))
         log(job, f"📦 ZIP final generado: {zip_final_path}")
         for viejo in dl_dir.glob(f"facturas_{periodo}_{ips_nombre}_PARCIAL_*.zip"):
             try:
@@ -320,14 +334,56 @@ def cargar_progreso(job, ips_dir):
             log(job, f"⚠️ Error al leer progreso: {e}", "warn")
     return set()
 
-def guardar_progreso(job, ips_dir, completadas):
+def guardar_progreso(job, ips_dir, completadas, nuevo_item=None, meta=None):
+    """
+    Además de la lista plana de completadas (para reanudar, igual que
+    siempre), guarda un detalle por factura (tipo + fecha real) y metadata
+    (identidad, ips, aseguradora, período) — necesario para poder migrar
+    esto a la base de datos de historial sin perder información.
+    Usa lectura-fusión-escritura: cada llamada solo necesita pasar el
+    ítem NUEVO, el detalle de los anteriores se preserva del archivo.
+    """
     progreso_path = ips_dir / "progreso.json"
+    detalle = {}
+    if progreso_path.exists():
+        try:
+            with open(progreso_path, "r", encoding="utf-8") as f:
+                detalle = json.load(f).get("detalle", {}) or {}
+        except Exception:
+            pass
+    if nuevo_item:
+        detalle[str(nuevo_item["factura"])] = {
+            "tipo": nuevo_item.get("tipo"),
+            "fecha_descarga": nuevo_item.get("fecha_descarga") or datetime.now().isoformat(),
+        }
     try:
-        data = {"completadas": list(completadas), "actualizado": datetime.now().isoformat()}
+        data = {"completadas": list(completadas), "detalle": detalle, "actualizado": datetime.now().isoformat()}
+        if meta:
+            data["meta"] = meta
         with open(progreso_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception as e:
-        log(job, f"⚠️ Error al guardar progreso: {e}", "warn")
+        log(job, f"⚠️ Error al escribir progreso.json: {e}", "warn")
+
+    try:
+        historial_db.registrar_descargas(
+            aseguradora=(meta or {}).get("aseguradora", "Desconocida"),
+            ips_nombre=(meta or {}).get("ips_nombre", "IPS_NO_IDENTIFICADA"),
+            periodo=(meta or {}).get("periodo"), identidad=(meta or {}).get("identidad"),
+            items=[{"factura": k, "siniestro": v.get("tipo"), "fecha_descarga": v.get("fecha_descarga")} for k, v in detalle.items()],
+            ips=(meta or {}).get("ips"),
+        )
+    except Exception as e:
+        log(job, f"⚠️ Error al registrar en el historial (tabla descargas): {e}", "warn")
+
+    try:
+        historial_db.registrar_facturas_ejecucion(
+            (meta or {}).get("ejecucion_id"), "bolivar", (meta or {}).get("aseguradora"),
+            (meta or {}).get("ips"), (meta or {}).get("periodo"),
+            [{"factura": k, "estado": "exitosa", "fecha_fin": v.get("fecha_descarga")} for k, v in detalle.items()],
+        )
+    except Exception as e:
+        log(job, f"⚠️ Error al registrar la ejecución (tabla ejecucion_facturas): {e}", "warn")
 
 def generar_reporte_excel(dl_dir, periodo, ips_nombre, exitosas, errores):
     if not EXCEL_AVAILABLE:
@@ -1264,13 +1320,32 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                 raise Exception(f"No se pudo localizar el período '{periodo}' tras 60s.")
 
             log(job, "🏥 Obteniendo nombre de la IPS...")
-            # Extraer dígitos del usuario para buscar en MAPA_IPS
-            m = re.search(r'(\d{9,12})', usuario)
-            nit_from_usuario = m.group(1) if m else None
+            # CORREGIDO: antes esto sacaba dígitos del username con una regex
+            # (ej. "760010961401" del propio texto "BOL760010961401"), que NO
+            # es el NIT real de la empresa -- es un número de cuenta del
+            # portal. El NIT real vive en MAPA_USUARIO_NIT, exactamente el
+            # mismo mapa que ya usa correctamente la verificación previa en
+            # start_job. Al usar un "NIT" equivocado aquí, nunca coincidía
+            # con MAPA_IPS, y el nombre de IPS que terminaba guardándose en
+            # el historial no era el mismo que el que se usaba para
+            # preguntar "¿ya se descargó esto?" -- por eso nunca coincidían.
+            nit_from_usuario = MAPA_USUARIO_NIT.get(usuario.upper())
+            if not nit_from_usuario:
+                # Respaldo solo para cuentas nuevas que aún no estén en el mapa.
+                m = re.search(r'(\d{9,12})', usuario)
+                nit_from_usuario = m.group(1) if m else None
             if nit_from_usuario:
-                log(job, f"    🔑 NIT extraído del usuario '{usuario}': {nit_from_usuario}")
+                log(job, f"    🔑 NIT real de la empresa (MAPA_USUARIO_NIT): {nit_from_usuario}")
             ips_nombre_actual = _extraer_nombre_ips(job, page, target_frame, nit_usuario=nit_from_usuario)
             job["ips_nombre"] = ips_nombre_actual
+            # Se refresca (no se reemplaza por una variable nueva) la misma
+            # ips_identity que ya usan guardar_progreso() y el registro de
+            # errores -- así el guardado real y la consulta de duplicados
+            # SIEMPRE comparten idéntico NIT, sin importar si el dato vino
+            # del mapa fijo o de la detección en vivo del portal.
+            with job["lock"]:
+                job["state"]["ips_identity"] = resolver(nit=nit_from_usuario, nombre_detectado=ips_nombre_actual)
+                job["state"]["ips_nit"] = nit_from_usuario
 
             if job["state"].get("stopping"): return
             log(job, f"📅 Click en columna Cant del período '{periodo}'...")
@@ -1422,6 +1497,35 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
             ips_dir = dl_dir / ips_nombre_actual
             completadas = cargar_progreso(job, ips_dir)
 
+            try:
+                _ips_actual = job["state"].get("ips_identity") or {}
+                if _ips_actual.get("nit"):
+                    ya_en_historial = historial_db.buscar_ya_descargadas_por_nit(
+                        "Bolívar", _ips_actual["nit"], [fac['num'] for fac in facturas_objetivo]
+                    )
+                else:
+                    ya_en_historial = historial_db.buscar_ya_descargadas(
+                        "Bolívar", ips_nombre_actual, [fac['num'] for fac in facturas_objetivo]
+                    )
+                nuevas_en_historial = {f: v for f, v in ya_en_historial.items() if f not in completadas}
+                if nuevas_en_historial:
+                    with job["lock"]:
+                        job["state"]["duplicados_pendientes"] = {"ya_descargadas": nuevas_en_historial}
+                        job["state"]["duplicate_event"].clear()
+                    while not job["state"].get("duplicate_event").wait(0.5):
+                        if job["state"].get("stopping"):
+                            return
+                    decision = job["state"].get("decision_redescarga") or "ninguna"
+                    seleccionadas = set(job["state"].get("facturas_redescarga") or [])
+                    if decision == "ninguna":
+                        facturas_objetivo = [f for f in facturas_objetivo if f["num"] not in nuevas_en_historial]
+                    elif decision == "seleccionadas":
+                        facturas_objetivo = [f for f in facturas_objetivo if f["num"] not in nuevas_en_historial or f["num"] in seleccionadas]
+                    with job["lock"]:
+                        job["state"]["duplicados_pendientes"] = None
+            except Exception:
+                pass
+
             facturas_pendientes = []
             for fac in facturas_objetivo:
                 if fac['num'] in completadas:
@@ -1506,7 +1610,18 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                         with job["lock"]:
                             job["state"]["stats"]["descargadas"] += 1
                         completadas.add(fac['num'])
-                        guardar_progreso(job, ips_dir, completadas)
+                        guardar_progreso(
+                            job, ips_dir, completadas,
+                            nuevo_item={"factura": fac['num'], "tipo": fac.get('tipo')},
+                            meta={
+                                "identidad": job["state"].get("identidad"),
+                                "ips": job["state"].get("ips_identity"),
+                                "ejecucion_id": job["state"].get("ejecucion_id"),
+                                "ips_nombre": ips_nombre_actual,
+                                "aseguradora": "Bolívar",
+                                "periodo": job.get("periodo"),
+                            },
+                        )
                         log(job, f"  ✅ Descargada: {fac['num']}", "success")
                     except Exception as e:
                         error_msg = str(e)
@@ -1534,6 +1649,15 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                         "captura": ""
                                     })
+                                    try:
+                                        historial_db.registrar_error_ejecucion(
+                                            job["state"].get("ejecucion_id"), fac['num'], "bolivar", "Bolívar",
+                                            job["state"].get("ips_identity"), "factura_inexistente",
+                                            "Factura no existe en el sistema (No se encontraron registros)",
+                                            "descarga_factura", False, intento_num, "fallida_definitiva",
+                                        )
+                                    except Exception as e:
+                                        log(job, f"⚠️ No se pudo registrar el error de la factura {fac['num']} en el historial: {e}", "warn")
                             log(job, f"  ⏭️ Factura {fac['num']} marcada como inexistente — no se reintentará.", "warn")
                         else:
                             with job["lock"]:
@@ -1725,6 +1849,14 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                             except:
                                 pass
                             job["state"]["errores_detalle"].append(error_info)
+                            try:
+                                historial_db.registrar_error_ejecucion(
+                                    job["state"].get("ejecucion_id"), fac['num'], "bolivar", "Bolívar",
+                                    job["state"].get("ips_identity"), "descarga_persistente",
+                                    error_info["error"], "descarga_factura", False, MAX_REINTENTOS, "fallida",
+                                )
+                            except Exception as e:
+                                log(job, f"⚠️ No se pudo registrar el error de la factura {fac['num']} en el historial: {e}", "warn")
                     job["state"]["stats"]["errores"] = len(job["state"]["errores_detalle"])
 
             browser.close()
@@ -1765,6 +1897,13 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
         # lo que se haya descargado hasta el momento.
         if not zip_parcial_generado:
             generar_zip_parcial(job)
+        historial_db.cerrar_ejecucion(
+            job["state"].get("ejecucion_id"), "error" if job["state"].get("error") else ("cancelada" if job["state"].get("stopping") else "completada"),
+            total_detectadas=job["state"].get("stats", {}).get("total", 0),
+            total_procesadas=job["state"].get("stats", {}).get("descargadas", 0) + job["state"].get("stats", {}).get("errores", 0),
+            total_exitosas=job["state"].get("stats", {}).get("descargadas", 0),
+            total_fallidas=job["state"].get("stats", {}).get("errores", 0),
+        )
         with job["lock"]:
             if not job["state"].get("_lote_activo"):
                 job["state"]["running"] = False
@@ -1810,12 +1949,15 @@ def index():
 @bp.route("/api/start", methods=["POST"])
 def start_job():
     is_multipart = request.content_type and "multipart/form-data" in request.content_type
-    data = request.form if is_multipart else (request.json or {})
+    data = request.form if is_multipart else (request.get_json(silent=True) or request.form or {})
     usuario = data.get("usuario", "").strip()
     password = data.get("password", "").strip()
     periodo_input = data.get("periodo", "").strip()
     custom_path = data.get("download_path", "").strip()
     reintentos_largos = str(data.get("reintentos_largos", "true")).lower() not in ("false", "off", "0", "no")
+    identidad = validar_identidad(data.get("identidad"))
+    if not identidad:
+        return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
     if not all([usuario, password, periodo_input]):
         return jsonify({"ok": False, "error": "Faltan campos requeridos"}), 400
     periodos = parse_periodo_input(periodo_input)
@@ -1824,6 +1966,11 @@ def start_job():
 
     empresa_id = resolve_empresa_id(usuario)
     job = get_or_create_job(empresa_id)
+    nit_usuario = MAPA_USUARIO_NIT.get(usuario.upper())
+    ips_previa = MAPA_IPS.get(nit_usuario, "IPS_NO_IDENTIFICADA") if nit_usuario else "IPS_NO_IDENTIFICADA"
+    decision_redescarga = str(data.get("decision_redescarga", ""))
+    facturas_redescarga = {str(v) for v in (json.loads(data.get("facturas_redescarga", "[]")) if isinstance(data.get("facturas_redescarga"), str) else (data.get("facturas_redescarga") or []))}
+    confirmar_duplicados = str(data.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
 
     # Si se adjuntó el archivo de facturas junto con el arranque, se procesa
     # AQUÍ MISMO (no depende de un /api/upload previo, cuyo resultado en
@@ -1849,6 +1996,28 @@ def start_job():
         if manual_facturas:
             facturas_nuevas = (facturas_nuevas or []) + manual_facturas
 
+    # Verificación de duplicados: AHORA sí, con facturas_nuevas ya armada
+    # (archivo + manuales). Si no hay lista explícita (se va a descargar
+    # "todo lo que haya" en el portal), no hay nada que verificar aquí --
+    # eso queda como aviso informativo dentro de run_automation, ya que la
+    # IPS solo se conoce tras iniciar sesión.
+    if facturas_nuevas:
+        try:
+            if nit_usuario:
+                repetidas = historial_db.buscar_ya_descargadas_por_nit("Bolívar", nit_usuario, facturas_nuevas)
+            else:
+                repetidas = historial_db.buscar_ya_descargadas("Bolívar", ips_previa, facturas_nuevas)
+        except Exception as e:
+            log(job, f"⚠️ No se pudo consultar el historial de duplicados: {e}", "warn")
+            repetidas = {}
+        if repetidas and not confirmar_duplicados:
+            return jsonify({"ok": False, "requiere_confirmacion": True, "ya_descargadas": repetidas, "total_filas": len(facturas_nuevas)}), 409
+        if repetidas:
+            if decision_redescarga == "ninguna":
+                facturas_nuevas = [f for f in facturas_nuevas if f not in repetidas]
+            elif decision_redescarga == "seleccionadas":
+                facturas_nuevas = [f for f in facturas_nuevas if f not in repetidas or f in facturas_redescarga]
+
     with jobs_registry_lock:
         with job["lock"]:
             if job["state"]["running"]:
@@ -1873,6 +2042,16 @@ def start_job():
         log(job, f"📄 Usando filtro de {len(job['state']['facturas_permitidas'])} facturas cargado previamente.")
 
     dl_path = custom_path if custom_path else str(DOWNLOAD_DIR / periodo_input)
+    if custom_path:
+        registro_rutas.registrar_ruta("Bolívar", custom_path)
+
+    job["state"]["identidad"] = identidad
+    job["state"]["ips_identity"] = resolver(nit=nit_usuario, nombre_detectado=ips_previa)
+    job["state"]["ips_nit"] = nit_usuario
+    job["state"]["ejecucion_id"] = historial_db.iniciar_ejecucion(
+        identidad, "bolivar", "Bolívar", job["state"]["ips_identity"], periodo_input, dl_path
+    )
+
     concurrency.registrar_inicio("bolivar")
     if len(periodos) > 1:
         log(job, f"📅 Procesando rango de {len(periodos)} períodos: {periodos[0]} → {periodos[-1]}")
@@ -1886,7 +2065,7 @@ def start_job():
 
 @bp.route("/api/stop", methods=["POST"])
 def stop_job_route():
-    empresa_id = resolve_empresa_id(request.json.get("empresa_id") if request.is_json else request.args.get("empresa_id", ""))
+    empresa_id = resolve_empresa_id((request.get_json(silent=True) or {}).get("empresa_id") if request.is_json else request.args.get("empresa_id", ""))
     job = get_job_or_none(empresa_id)
     if not job:
         return jsonify({"ok": False, "message": "No hay proceso en ejecución"}), 400
@@ -1896,30 +2075,51 @@ def stop_job_route():
     stop_job(job)
     return jsonify({"ok": True, "message": "Deteniendo proceso..."})
 
+
+@bp.route("/api/duplicate-decision", methods=["POST"])
+def duplicate_decision_route():
+    data = request.get_json(silent=True) or request.form or {}
+    job = get_job_or_none(resolve_empresa_id(data.get("empresa_id", "")))
+    if not job or not job["state"].get("duplicados_pendientes"):
+        return jsonify({"ok": False, "error": "No hay una decisión de duplicados pendiente"}), 409
+    decision = data.get("decision")
+    if decision not in ("ninguna", "todas", "seleccionadas"):
+        return jsonify({"ok": False, "error": "Decisión inválida"}), 400
+    with job["lock"]:
+        job["state"]["decision_redescarga"] = decision
+        job["state"]["facturas_redescarga"] = [str(v) for v in data.get("selected", [])]
+        job["state"]["duplicate_event"].set()
+    return jsonify({"ok": True})
+
 @bp.route("/api/reset", methods=["POST"])
 def reset_job_route():
-    data = request.json or {}
+    data = request.get_json(silent=True) or request.form or {}
     periodo = data.get("periodo", "").strip()
     empresa_id = resolve_empresa_id(data.get("empresa_id", ""))
     job = get_job_or_none(empresa_id)
-    if job and job["state"]["running"]:
-        # Importante: NO retener job["lock"] aquí; stop_job() lo adquiere
-        # internamente. Si lo retuvéramos, threading.Lock no es reentrante
-        # y el reset quedaría bloqueado indefinidamente.
-        stop_job(job)
-        # Espera activa corta: hasta 10s para que el hilo confirme running=False.
-        for _ in range(20):
-            time.sleep(0.5)
-            with job["lock"]:
-                if not job["state"]["running"]:
-                    break
+    if job:
+        with job["lock"]:
+            estaba_corriendo = job["state"]["running"]
+        if estaba_corriendo:
+            # Importante: NO retener job["lock"] aquí; stop_job() lo adquiere
+            # internamente. threading.Lock no es reentrante -- si lo
+            # retuviéramos, el reset quedaría bloqueado para siempre.
+            stop_job(job)
+            # Espera activa: hasta 10s para que el hilo confirme running=False,
+            # en vez de un sleep(2) fijo que podía no ser suficiente.
+            for _ in range(20):
+                time.sleep(0.5)
+                with job["lock"]:
+                    if not job["state"]["running"]:
+                        break
     if periodo:
         periodo_dir = DOWNLOAD_DIR / periodo
         if periodo_dir.exists():
             for progreso_file in periodo_dir.glob("*/progreso.json"):
                 try:
+                    n_migradas = historial_db.migrar_progreso_json(progreso_file.parent)
                     progreso_file.unlink()
-                    log(job, f"🗑️ Progreso eliminado: {progreso_file}")
+                    log(job, f"🗑️ Progreso eliminado: {progreso_file} ({n_migradas} factura(s) archivadas en el historial)")
                 except Exception as e:
                     log(job, f"⚠️ Error al borrar {progreso_file}: {e}", "warn")
         else:
@@ -1932,7 +2132,7 @@ def reset_job_route():
 
 @bp.route("/api/clean", methods=["POST"])
 def clean_downloads():
-    data = request.json or {}
+    data = request.get_json(silent=True) or request.form or {}
     periodo = data.get("periodo", "").strip()
     ips = data.get("ips", "").strip()
     empresa_id = resolve_empresa_id(data.get("empresa_id", ""))
@@ -1985,6 +2185,7 @@ def get_status():
                 "error": job["state"]["error"],
                 "stats": job["state"]["stats"],
                 "logs": job["state"]["logs"][-200:],
+                "duplicados_pendientes": job["state"].get("duplicados_pendientes"),
                 "errores_excel_url": job["state"].get("errores_excel_url"),
             })
     # Sin empresa_id (ej: el panel principal): vista agregada de todas las

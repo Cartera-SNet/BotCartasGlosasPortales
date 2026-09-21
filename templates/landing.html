@@ -189,7 +189,7 @@ const IPS_CATALOGO = {
 
 // Construye un mapa plano: tanto la clave principal como cada alias apuntan
 // al nombre corto (primer alias) — así calza sin importar cuál de las
-// variantes conocidas haya quedado guardada como ips_nombre
+// variantes conocidas haya quedado guardada como ips_nombre.
 const IPS_NOMBRE_CORTO = {};
 for (const [clave, aliases] of Object.entries(IPS_CATALOGO)) {
   const corto = aliases[0];
@@ -206,6 +206,7 @@ function nombreCortoIPS(nombreCompleto) {
 }
 
 async function actualizarEstados() {
+  if (document.hidden) return;
   const tarjetas = document.querySelectorAll('.card[data-status-url]');
   for (const card of tarjetas) {
     const url = card.dataset.statusUrl;
@@ -263,6 +264,9 @@ async function actualizarEstados() {
 }
 actualizarEstados();
 setInterval(actualizarEstados, 4000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) actualizarEstados();
+});
 </script>
 
 </body>

@@ -18,6 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_from_directory
 from . import concurrency
+from . import historial_db
+from . import registro_rutas
+from .catalogo_ips import resolver, validar_identidad
 from io import BytesIO
 
 try:
@@ -104,24 +107,6 @@ def resolver_ips_por_usuario(usuario: str):
     nit = m.group(1) if m else None
     nombre = MAPA_IPS.get(nit, "IPS_DESCONOCIDA") if nit else "IPS_DESCONOCIDA"
     return nit, nombre
-
-def es_consecutivo_valido(valor: str) -> bool:
-    """
-    Valida estructura real de un consecutivo/radicado del portal Mundial.
-    Ejemplo válido: DEV-202606001120, LIQ123456789, OBJ-202501000111
-    No acepta encabezados truncados como "Cons", "Consecutivo", "Radicado", etc.
-    La validación se basa en la FORMA del dato, no en el nombre de la columna.
-    """
-    v = (valor or "").strip().upper()
-    if not v or len(v) < 7:
-        return False
-    # Palabras típicas de encabezado que nunca son un consecutivo real
-    if v in ("CONS", "CONSECUTIVO", "CONSECUTIVOS", "RADICADO", "RADICADOS",
-             "CONSEC", "RAD", "NRO", "NUMERO", "NÚMERO", "FACTURA", "FACTURAS"):
-        return False
-    # Estructura: 2+ letras, opcional guion, luego 5+ dígitos
-    return bool(re.match(r'^[A-Z]{2,}-?\d{5,}$', v))
-
 
 def detectar_tipo_solicitud(valor: str):
     v = (valor or "").strip().upper()
@@ -219,6 +204,14 @@ def log(job, msg, level="info"):
         logger.error(msg)
     else:
         logger.info(msg)
+    if level == "error" and job is not None:
+        try:
+            historial_db.registrar_error_ejecucion(
+                job["state"].get("ejecucion_id"), None, "mundial", "Mundial",
+                job["state"].get("ips_identity"), "bot", msg, "log", True, 1, "error"
+            )
+        except Exception:
+            pass
 
 def reset_state(job):
     with job["lock"]:
@@ -291,10 +284,6 @@ def generar_zip_parcial(job):
                             zf.write(file_path, f"{nombre}/{file_path.relative_to(carpeta)}")
             if excel_path and excel_path.exists():
                 zf.write(excel_path, "reporte_parcial.xlsx")
-            # Excel dedicado SOLO con consecutivos en error (recargable).
-            excel_solo_errores = _generar_excel_solo_errores(dl_dir, ips_nombre, errores)
-            if excel_solo_errores and excel_solo_errores.exists():
-                zf.write(excel_solo_errores, excel_solo_errores.name)
             errores_dir = ips_dir / "Errores"
             if errores_dir.exists():
                 for file_path in errores_dir.rglob("*"):
@@ -313,28 +302,6 @@ def generar_zip_parcial(job):
                 pass
 
 # ==================== PERSISTENCIA ====================
-def _generar_excel_solo_errores(dl_dir, ips_nombre, errores):
-    """Genera un Excel aparte SOLO con consecutivos en error tras agotar reintentos.
-    Pensado para descarga automática; cualquier fallo se ignora (el reporte
-    combinado ya contiene esta misma información como respaldo).
-    """
-    if not errores or not EXCEL_AVAILABLE:
-        return None
-    try:
-        nombre = f"errores_{ips_nombre}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        path = Path(dl_dir) / nombre
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Errores"
-        ws.append(["Consecutivo", "Tipo solicitud", "Error", "Fecha/Hora"])
-        for err in errores:
-            ws.append([err.get("consecutivo"), err.get("tipo"), err.get("error"), err.get("timestamp")])
-        wb.save(path)
-        return path
-    except Exception:
-        return None
-
-
 def cargar_progreso(job, ips_dir):
     p = ips_dir / "progreso.json"
     if p.exists():
@@ -347,13 +314,55 @@ def cargar_progreso(job, ips_dir):
             log(job, f"Error al leer progreso: {e}", "warn")
     return set()
 
-def guardar_progreso(job, ips_dir, completadas):
+def guardar_progreso(job, ips_dir, completadas, nuevo_item=None, meta=None):
+    """
+    Además de la lista plana de completadas (para reanudar, igual que
+    siempre), guarda un detalle por consecutivo (tipo + fecha real) y
+    metadata (identidad, ips, aseguradora, lote) — necesario para poder
+    migrar esto a la base de datos de historial sin perder información.
+    Lectura-fusión-escritura: cada llamada solo pasa el ítem NUEVO.
+    """
     p = ips_dir / "progreso.json"
+    detalle = {}
+    if p.exists():
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                detalle = json.load(f).get("detalle", {}) or {}
+        except Exception:
+            pass
+    if nuevo_item:
+        detalle[str(nuevo_item["factura"])] = {
+            "tipo": nuevo_item.get("tipo"),
+            "fecha_descarga": nuevo_item.get("fecha_descarga") or datetime.now().isoformat(),
+        }
     try:
+        data = {"completadas": list(completadas), "detalle": detalle, "actualizado": datetime.now().isoformat()}
+        if meta:
+            data["meta"] = meta
         with open(p, "w", encoding="utf-8") as f:
-            json.dump({"completadas": list(completadas), "actualizado": datetime.now().isoformat()}, f, indent=2)
+            json.dump(data, f, indent=2)
     except Exception as e:
-        log(job, f"Error al guardar progreso: {e}", "warn")
+        log(job, f"⚠️ Error al escribir progreso.json: {e}", "warn")
+
+    try:
+        historial_db.registrar_descargas(
+            aseguradora=(meta or {}).get("aseguradora", "Desconocida"),
+            ips_nombre=(meta or {}).get("ips_nombre", "IPS_NO_IDENTIFICADA"),
+            periodo=(meta or {}).get("periodo"), identidad=(meta or {}).get("identidad"),
+            items=[{"factura": k, "siniestro": v.get("tipo"), "fecha_descarga": v.get("fecha_descarga")} for k, v in detalle.items()],
+            ips=(meta or {}).get("ips"),
+        )
+    except Exception as e:
+        log(job, f"⚠️ Error al registrar en el historial (tabla descargas): {e}", "warn")
+
+    try:
+        historial_db.registrar_facturas_ejecucion(
+            (meta or {}).get("ejecucion_id"), "mundial", (meta or {}).get("aseguradora"),
+            (meta or {}).get("ips"), (meta or {}).get("periodo"),
+            [{"factura": k, "estado": "exitosa", "fecha_fin": v.get("fecha_descarga")} for k, v in detalle.items()],
+        )
+    except Exception as e:
+        log(job, f"⚠️ Error al registrar la ejecución (tabla ejecucion_facturas): {e}", "warn")
 
 # ==================== UTILIDADES PLAYWRIGHT ====================
 def _texto_pagina(page):
@@ -881,7 +890,18 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                             })
                             job["state"]["stats"]["descargadas"] += 1
                         completadas.add(valor)
-                        guardar_progreso(job, ips_dir, completadas)
+                        guardar_progreso(
+                            job, ips_dir, completadas,
+                            nuevo_item={"factura": valor, "tipo": "No Dev/Obj"},
+                            meta={
+                                "identidad": job["state"].get("identidad"),
+                                "ips": job["state"].get("ips_identity"),
+                                "ejecucion_id": job["state"].get("ejecucion_id"),
+                                "ips_nombre": ips_nombre,
+                                "aseguradora": "Mundial",
+                                "periodo": job["state"].get("lote"),
+                            },
+                        )
                         cartas_dev_registradas.append({
                             "consecutivo": valor,
                             "tipo": "No Dev/Obj",
@@ -951,7 +971,18 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                             })
                             job["state"]["stats"]["descargadas"] += 1
                         completadas.add(valor)
-                        guardar_progreso(job, ips_dir, completadas)
+                        guardar_progreso(
+                            job, ips_dir, completadas,
+                            nuevo_item={"factura": valor, "tipo": "No Liquidación"},
+                            meta={
+                                "identidad": job["state"].get("identidad"),
+                                "ips": job["state"].get("ips_identity"),
+                                "ejecucion_id": job["state"].get("ejecucion_id"),
+                                "ips_nombre": ips_nombre,
+                                "aseguradora": "Mundial",
+                                "periodo": job["state"].get("lote"),
+                            },
+                        )
                         cartas_liq_registradas.append({
                             "consecutivo": valor,
                             "tipo": "No Liquidación",
@@ -1018,7 +1049,18 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                             })
                             job["state"]["stats"]["descargadas"] += 1
                         completadas.add(valor)
-                        guardar_progreso(job, ips_dir, completadas)
+                        guardar_progreso(
+                            job, ips_dir, completadas,
+                            nuevo_item={"factura": valor, "tipo": "No Radicado"},
+                            meta={
+                                "identidad": job["state"].get("identidad"),
+                                "ips": job["state"].get("ips_identity"),
+                                "ejecucion_id": job["state"].get("ejecucion_id"),
+                                "ips_nombre": ips_nombre,
+                                "aseguradora": "Mundial",
+                                "periodo": job["state"].get("lote"),
+                            },
+                        )
                         cartas_radicado_registradas.append({
                             "consecutivo": valor,
                             "tipo": "No Radicado",
@@ -1145,10 +1187,6 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                 # Agregar Excel
                 if excel_path and excel_path.exists():
                     zf.write(excel_path, "reporte_cartas.xlsx")
-                # Agregar Excel dedicado SOLO errores (recargable).
-                excel_solo_errores_final = _generar_excel_solo_errores(dl_dir, ips_nombre, errores)
-                if excel_solo_errores_final and excel_solo_errores_final.exists():
-                    zf.write(excel_solo_errores_final, excel_solo_errores_final.name)
                 # Agregar carpeta de errores si existe
                 errores_dir = ips_dir / "Errores"
                 if errores_dir.exists():
@@ -1156,6 +1194,22 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                         if file_path.is_file():
                             arcname = f"Errores/{file_path.relative_to(errores_dir)}"
                             zf.write(file_path, arcname)
+                # Excel dedicado SOLO con consecutivos en error persistente
+                # (recargable directo al bot, sin ambigüedad de hoja activa).
+                if errores and EXCEL_AVAILABLE:
+                    try:
+                        nombre_solo_errores = f"errores_{ips_nombre}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        path_solo_errores = dl_dir / nombre_solo_errores
+                        wb_solo = openpyxl.Workbook()
+                        ws_solo = wb_solo.active
+                        ws_solo.title = "Errores"
+                        ws_solo.append(["Consecutivo", "Tipo solicitud", "Error", "Fecha/Hora"])
+                        for er in errores:
+                            ws_solo.append([er.get("consecutivo"), er.get("tipo"), er.get("error"), er.get("timestamp")])
+                        wb_solo.save(path_solo_errores)
+                        zf.write(path_solo_errores, nombre_solo_errores)
+                    except Exception as e:
+                        log(job, f"⚠️ No se pudo generar el Excel dedicado de errores: {e}", "warn")
             log(job, f"ZIP final creado: {final_zip_path.name}", "success")
             zip_ya_generado = True
             # Ya terminó bien: cualquier ZIP parcial que haya quedado de
@@ -1197,6 +1251,13 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
         # lo que se haya descargado hasta el momento.
         if not zip_ya_generado:
             generar_zip_parcial(job)
+        historial_db.cerrar_ejecucion(
+            job["state"].get("ejecucion_id"), "error" if job["state"].get("error") else ("cancelada" if job["state"].get("stopping") else "completada"),
+            total_detectadas=job["state"].get("stats", {}).get("total", 0),
+            total_procesadas=job["state"].get("stats", {}).get("descargadas", 0) + job["state"].get("stats", {}).get("errores", 0),
+            total_exitosas=job["state"].get("stats", {}).get("descargadas", 0),
+            total_fallidas=job["state"].get("stats", {}).get("errores", 0),
+        )
         # Solo marcar como terminado si no hay un wrapper de reintentos controlando el estado
         with job["lock"]:
             if not job["state"].get("_reintento_activo"):
@@ -1292,7 +1353,7 @@ def index():
 
 @bp.route("/api/start", methods=["POST"])
 def start_job():
-    data = request.json or {}
+    data = request.get_json(silent=True) or request.form or {}
     usuario = data.get("usuario", "").strip()
     password = data.get("password", "").strip()
     tipo_acceso = data.get("tipo_acceso", "").strip()
@@ -1300,6 +1361,9 @@ def start_job():
     valores_texto = data.get("valores", "").strip()
     custom_path = data.get("download_path", "").strip()
     login_timeout = int(data.get("login_timeout", 180) or 180)
+    identidad = validar_identidad(data.get("identidad"))
+    if not identidad:
+        return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
 
     if not all([usuario, password]):
         return jsonify({"ok": False, "error": "Faltan usuario o contraseña"}), 400
@@ -1312,6 +1376,26 @@ def start_job():
 
     empresa_id = resolve_empresa_id(usuario)
     job = get_or_create_job(empresa_id)
+
+    confirmar_duplicados = str(data.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
+    decision_redescarga = data.get("decision_redescarga", "")
+    facturas_redescarga = {str(v) for v in (data.get("facturas_redescarga") or [])}
+    try:
+        _nit_check, ips_check = resolver_ips_por_usuario(usuario)
+        if _nit_check:
+            ya_descargadas = historial_db.buscar_ya_descargadas_por_nit("Mundial", _nit_check, valores)
+        else:
+            ya_descargadas = historial_db.buscar_ya_descargadas("Mundial", ips_check, valores) if ips_check else {}
+    except Exception as e:
+        log(job, f"⚠️ No se pudo consultar el historial de duplicados: {e}", "warn")
+        ya_descargadas = {}
+    if ya_descargadas:
+        if not confirmar_duplicados:
+            return jsonify({"ok": False, "requiere_confirmacion": True, "ya_descargadas": ya_descargadas, "total_filas": len(valores)})
+        if decision_redescarga == "ninguna":
+            valores = [v for v in valores if v not in ya_descargadas]
+        elif decision_redescarga == "seleccionadas":
+            valores = [v for v in valores if v not in ya_descargadas or v in facturas_redescarga]
 
     with jobs_registry_lock:
         with job["lock"]:
@@ -1330,8 +1414,20 @@ def start_job():
             job["state"]["logs"] = []
             job["state"]["_reintento_activo"] = False
             job["state"]["errores_excel_url"] = None
+            job["state"]["lote"] = lote
 
     dl_path = custom_path if custom_path else str(DOWNLOAD_DIR / lote_safe)
+    if custom_path:
+        registro_rutas.registrar_ruta("Mundial", custom_path)
+
+    job["state"]["identidad"] = identidad
+    nit_identidad, nombre_identidad = resolver_ips_por_usuario(usuario)
+    job["state"]["ips_identity"] = resolver(nit=nit_identidad, nombre_detectado=nombre_identidad)
+    job["state"]["ips_nit"] = nit_identidad
+    job["state"]["ejecucion_id"] = historial_db.iniciar_ejecucion(
+        identidad, "mundial", "Mundial", job["state"]["ips_identity"], lote_safe, dl_path
+    )
+
     concurrency.registrar_inicio("mundial")
     t = threading.Thread(
         target=run_automation_con_reintentos,
@@ -1343,7 +1439,7 @@ def start_job():
 
 @bp.route("/api/stop", methods=["POST"])
 def stop_job_route():
-    empresa_id = resolve_empresa_id(request.json.get("empresa_id") if request.is_json else request.args.get("empresa_id", ""))
+    empresa_id = resolve_empresa_id((request.get_json(silent=True) or {}).get("empresa_id") if request.is_json else request.args.get("empresa_id", ""))
     job = get_job_or_none(empresa_id)
     if not job:
         return jsonify({"ok": False, "message": "No hay proceso en ejecucion"}), 400
@@ -1355,20 +1451,25 @@ def stop_job_route():
 
 @bp.route("/api/reset", methods=["POST"])
 def reset_job_route():
-    data = request.json or {}
+    data = request.get_json(silent=True) or request.form or {}
     lote = data.get("lote", "").strip()
     empresa_id = resolve_empresa_id(data.get("empresa_id", ""))
     job = get_job_or_none(empresa_id)
-    if job and job["state"]["running"]:
-        # NO retener job["lock"]: stop_job() lo adquiere internamente.
-        # threading.Lock no es reentrante; mantenerlo aquí causaba deadlock.
-        stop_job(job)
-        # Espera activa (máx ~10s) hasta que el hilo confirme running=False.
-        for _ in range(20):
-            time.sleep(0.5)
-            with job["lock"]:
-                if not job["state"]["running"]:
-                    break
+    if job:
+        with job["lock"]:
+            estaba_corriendo = job["state"]["running"]
+        if estaba_corriendo:
+            # Importante: NO retener job["lock"] aquí; stop_job() lo adquiere
+            # internamente. threading.Lock no es reentrante -- si lo
+            # retuviéramos, el reset quedaría bloqueado para siempre.
+            stop_job(job)
+            # Espera activa: hasta 10s para que el hilo confirme running=False,
+            # en vez de un sleep(2) fijo que podía no ser suficiente.
+            for _ in range(20):
+                time.sleep(0.5)
+                with job["lock"]:
+                    if not job["state"]["running"]:
+                        break
     # Si hay lote, borra solo el de ese lote. Si NO hay lote, borra TODOS los progreso.json.
     if lote:
         lote_safe = re.sub(r"[^\w\-]", "_", lote)
@@ -1379,9 +1480,10 @@ def reset_job_route():
     if base.exists():
         for cand in list(base.glob("**/progreso.json")):
             try:
+                n_migradas = historial_db.migrar_progreso_json(cand.parent)
                 cand.unlink()
                 borrados += 1
-                log(job, f"Progreso eliminado: {cand}")
+                log(job, f"Progreso eliminado: {cand} ({n_migradas} factura(s) archivadas en el historial)")
             except Exception as e:
                 log(job, f"Error al borrar progreso: {e}", "warn")
     if borrados == 0:
@@ -1658,9 +1760,9 @@ def upload_consecutivos():
                 if any(p.startswith('consecutiv') or p == 'radicado' for p in palabras):
                     col_idx = i
                     break
-            # Decidir por FORMA real de consecutivo (no por adivinar el título).
-            # Un encabezado truncado como "Cons" NUNCA tiene dígitos → se trata como header.
-            start = 0 if (header and es_consecutivo_valido(header[col_idx] if len(header) > col_idx else "")) else 1
+            # Igual que en el flujo de Excel: decidir por FORMA (letras+guion+número),
+            # no por adivinar la palabra exacta del título del encabezado.
+            start = 0 if (header and re.match(r'^[A-Z]+-?\d', (header[col_idx] or '').upper())) else 1
             for r in rows[start:]:
                 if len(r) > col_idx and r[col_idx].strip():
                     valores.append(r[col_idx].strip())
@@ -1675,10 +1777,12 @@ def upload_consecutivos():
                 if any(p.startswith('consecutiv') or p == 'radicado' for p in palabras):
                     col_idx = cell.column
                     break
-            # Decidir si la fila 1 es encabezado o dato real mirando la ESTRUCTURA
-            # del valor (ej. DEV-202606001120). "Cons" u otros textos no pasan.
+            # Decidir si la fila 1 es encabezado (texto) o ya es un dato real,
+            # mirando si TIENE FORMA de consecutivo (letras+guion+número) —
+            # así no depende de adivinar la palabra exacta del título
+            # (ej: un encabezado truncado como "Cons" antes se colaba como dato).
             first = ws.cell(row=1, column=col_idx).value
-            start_row = 1 if es_consecutivo_valido(str(first) if first is not None else "") else 2
+            start_row = 1 if (first and re.match(r'^[A-Z]+-?\d', str(first).upper())) else 2
             for row in ws.iter_rows(min_row=start_row, values_only=True):
                 val = row[col_idx - 1] if len(row) >= col_idx else None
                 if val and str(val).strip():
@@ -1686,14 +1790,11 @@ def upload_consecutivos():
         else:
             return jsonify({"ok": False, "error": "Formato no soportado. Use CSV o Excel"}), 400
 
-        # Filtrar estrictamente por estructura de consecutivo válido.
-        # Esto evita que un encabezado residual, celdas de texto o basura
-        # se interpreten como radicados/consecutivos reales.
         vistos = set()
         limpios = []
         for v in valores:
             v = v.strip()
-            if v and es_consecutivo_valido(v) and v not in vistos:
+            if v and v not in vistos:
                 vistos.add(v)
                 limpios.append(v)
         if not limpios:

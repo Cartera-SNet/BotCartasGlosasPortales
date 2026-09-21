@@ -27,6 +27,7 @@ from flask import Flask, render_template
 app = Flask(__name__)
 
 # ---- Registrar cada bot como Blueprint ----
+from bots import estado_sura, bolivar, previsora, mundial
 from bots.estado_sura import bp as estado_sura_bp
 from bots.bolivar import bp as bolivar_bp
 from bots.previsora import bp as previsora_bp
@@ -36,6 +37,23 @@ app.register_blueprint(estado_sura_bp)
 app.register_blueprint(bolivar_bp)
 app.register_blueprint(previsora_bp)
 app.register_blueprint(mundial_bp)
+
+# ---- Vigilante de progreso.json abandonados (24h de gaveta) ----
+# Se arranca aquí (a nivel de módulo, no dentro de __main__) para que
+# funcione igual corriendo con "python app.py" o servido por gunicorn.
+from bots import vigilante_progreso
+vigilante_progreso.iniciar_vigilante([
+    {"nombre": "SIS Estado", "download_dir": estado_sura.DOWNLOAD_DIR / "estado",
+     "esta_activa": lambda: estado_sura.count_running_jobs("estado") > 0},
+    {"nombre": "Suramericana", "download_dir": estado_sura.DOWNLOAD_DIR / "sura",
+     "esta_activa": lambda: estado_sura.count_running_jobs("sura") > 0},
+    {"nombre": "Bolívar", "download_dir": bolivar.DOWNLOAD_DIR,
+     "esta_activa": lambda: bolivar.count_running_jobs() > 0},
+    {"nombre": "Previsora", "download_dir": previsora.DOWNLOAD_DIR,
+     "esta_activa": lambda: previsora.count_running_jobs() > 0},
+    {"nombre": "Mundial", "download_dir": mundial.DOWNLOAD_DIR,
+     "esta_activa": lambda: mundial.count_running_jobs() > 0},
+])
 
 
 # ---- Panel principal ----

@@ -1,50 +1,11 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-.venv/
-env/
-ENV/
-*.egg-info/
-dist/
-build/
-
-# Playwright / browsers
-.playwright/
-ms-playwright/
-
-# Local downloads and runtime state (never commit real documents)
-downloads/**/*
-!downloads/**/.gitkeep
-*.zip
-!Panel*.zip
-
-# IDE / OS
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
-
-# Secrets / local env (use Railway env vars)
+*.pyc
 .env
-.env.*
-!.env.example
-*.pem
-*.key
-credentials*
-secrets*
+venv/
 
-# Logs and temp
-*.log
-*.tmp
-tmp/
-temp/
-.cache/
+# Soportes/facturas reales descargadas — nunca deben subirse al repositorio
+downloads/*/*
+!downloads/*/.gitkeep
 
-# Git (do not re-include)
-.git/
+# Progreso de reanudación (datos de ejecución, no de código)
+progreso.json
