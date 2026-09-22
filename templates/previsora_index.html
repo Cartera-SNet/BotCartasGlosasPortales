@@ -602,6 +602,24 @@
   }
   .volver-panel { margin-left: auto; text-decoration: none; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; transition: all 0.15s; }
   .volver-panel:hover { background: rgba(0,0,0,0.05); }
+.info-tooltip-wrap { position: relative; display: inline-flex; margin-left: 8px; }
+.info-tooltip-icon { color: var(--text-secondary); cursor: help; font-size: 0.9rem; }
+.info-tooltip-icon:hover { color: var(--accent); }
+.info-tooltip-bubble {
+  visibility: hidden; opacity: 0; transition: opacity 0.15s ease;
+  position: absolute; top: 130%; left: 0; z-index: 50;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; width: 260px; font-size: 0.75rem; font-weight: normal;
+  color: var(--text-primary); box-shadow: 0 4px 14px rgba(0,0,0,0.12); line-height: 1.4;
+}
+.info-tooltip-wrap:hover .info-tooltip-bubble { visibility: visible; opacity: 1; }
+.advanced-toggle {
+  display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+  background:var(--bg-body); border-radius:8px; padding:9px 10px; user-select:none;
+}
+.advanced-toggle label { margin:0; font-size:0.75rem; letter-spacing:0.03em; cursor:pointer; }
+.advanced-content { display:none; margin-top:8px; flex-direction: column; gap: 10px; }
+.advanced-content.open { display: flex; }
 </style>
 </head>
 <body>
@@ -609,7 +627,12 @@
 <header>
   <div class="header-icon"><img src="/static/logo_previsora.png" alt="Previsora"></div>
   <div>
-    <h1>Descargador Cartas Glosa — Previsora SOAT</h1>
+    <h1>Descargador Cartas Glosa — Previsora SOAT
+      <span class="info-tooltip-wrap">
+        <i class="fas fa-circle-info info-tooltip-icon"></i>
+        <span class="info-tooltip-bubble">Descarga: <strong>Envios_D</strong> y <strong>ActaDevolucion</strong></span>
+      </span>
+    </h1>
     <p>Activa IT · Automatización de descarga de archivos soporte</p>
   </div>
   <a href="/" class="volver-panel"><i class="fas fa-arrow-left"></i> Panel principal</a>
@@ -645,28 +668,45 @@
           </div>
         </div>
 
-        <div class="form-group" id="manualAddBox" style="background:var(--bg-body); border-radius:8px; padding:8px 10px;">
-          <div id="manualAddToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-            <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0;">Agregar manualmente <span id="manualCountInline" style="color:var(--success);"></span></label>
-            <i id="manualAddChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+        <div class="form-group" id="advancedBox" style="background:var(--bg-body); border-radius:8px; padding:0;">
+          <div id="advancedToggle" class="advanced-toggle">
+            <label>Configuración avanzada</label>
+            <i id="advancedChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
           </div>
-          <div id="manualAddContent" style="display:none; margin-top:6px;">
-            <textarea id="manualFactura" class="input-field" placeholder="Escribe o pega aquí" rows="1" style="font-size:0.75rem; resize:none; overflow-y:auto;"></textarea>
-            <button type="button" id="btnManualAdd" class="btn-primary" style="width:100%; margin-top:6px; font-size:0.75rem; padding:7px;">
-              <i class="fas fa-plus"></i> Agregar factura
-            </button>
-            <div id="manualDetalle" style="display:none; margin-top:6px; max-height:120px; overflow-y:auto; border:1px solid var(--border); border-radius:6px;"></div>
-          </div>
-        </div>
+          <div id="advancedContent" class="advanced-content" style="padding: 0 10px 10px;">
 
-        <div class="form-group" id="downloadPathBox">
-          <div id="downloadPathToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-            <label style="margin:0;">Carpeta de descarga (opcional)</label>
-            <i id="downloadPathChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
-          </div>
-          <div id="downloadPathContent" style="display:none; margin-top:6px;">
-            <input type="text" id="downloadPath" class="input-field" placeholder="Dejar vacío para usar por defecto">
-            <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[periodo]/</div>
+            <div id="manualAddBox" style="background:var(--bg-card); border-radius:8px; padding:8px 10px;">
+              <div id="manualAddToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                <label style="font-size:0.7rem; letter-spacing:0.03em; margin:0;">Agregar manualmente <span id="manualCountInline" style="color:var(--success);"></span></label>
+                <i id="manualAddChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+              </div>
+              <div id="manualAddContent" style="display:none; margin-top:6px;">
+                <textarea id="manualFactura" class="input-field" placeholder="Escribe o pega aquí" rows="1" style="font-size:0.75rem; resize:none; overflow-y:auto;"></textarea>
+                <button type="button" id="btnManualAdd" class="btn-primary" style="width:100%; margin-top:6px; font-size:0.75rem; padding:7px;">
+                  <i class="fas fa-plus"></i> Agregar factura
+                </button>
+                <div id="manualDetalle" style="display:none; margin-top:6px; max-height:120px; overflow-y:auto; border:1px solid var(--border); border-radius:6px;"></div>
+              </div>
+            </div>
+
+            <div id="downloadPathBox">
+              <div id="downloadPathToggle" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                <label style="margin:0;">Carpeta de descarga (opcional)</label>
+                <i id="downloadPathChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+              </div>
+              <div id="downloadPathContent" style="display:none; margin-top:6px;">
+                <input type="text" id="downloadPath" class="input-field" placeholder="Dejar vacío para usar por defecto">
+                <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[periodo]/</div>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="reintentosLargos" checked style="width:16px; height:16px; margin:0;">
+              <label for="reintentosLargos" style="margin:0; cursor:pointer; font-weight:normal; font-size:0.8rem;">
+                Reintentos largos si persisten errores (recomendado)
+              </label>
+            </div>
+
           </div>
         </div>
 
@@ -684,18 +724,6 @@
             </button>
           </div>
           <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
-        </div>
-
-        <div class="form-group" style="display:flex; align-items:center; gap:8px;">
-          <input type="checkbox" id="reintentosLargos" checked style="width:16px; height:16px; margin:0;">
-          <label for="reintentosLargos" style="margin:0; cursor:pointer; font-weight:normal; font-size:0.8rem;">
-            Reintentos largos si persisten errores (recomendado)
-          </label>
-        </div>
-
-        <div class="alert info">
-          <i class="fas fa-info-circle"></i>
-          <span>Descarga: <strong>Envios_D</strong> y <strong>ActaDevolucion</strong></span>
         </div>
 
         <div class="form-group identity-panel" id="identidadBox">
@@ -1008,6 +1036,14 @@ function renderManualEntries() {
     detalle.appendChild(fila);
   });
 }
+
+document.getElementById("advancedToggle").addEventListener("click", () => {
+  const content = document.getElementById("advancedContent");
+  const chevron = document.getElementById("advancedChevron");
+  const abierto = content.classList.contains("open");
+  content.classList.toggle("open", !abierto);
+  chevron.className = abierto ? "fas fa-chevron-down" : "fas fa-chevron-up";
+});
 
 document.getElementById("downloadPathToggle").addEventListener("click", () => {
   const content = document.getElementById("downloadPathContent");
