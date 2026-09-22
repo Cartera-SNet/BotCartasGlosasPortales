@@ -263,9 +263,22 @@ async function actualizarEstados() {
   }
 }
 actualizarEstados();
-setInterval(actualizarEstados, 4000);
+let intervaloEstados = setInterval(actualizarEstados, 4000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) actualizarEstados();
+  if (document.hidden) {
+    // Se detiene por completo mientras la pestaña está oculta -- antes solo
+    // se agregaba un refresco extra al volver, pero el setInterval de fondo
+    // seguía corriendo para siempre sin importar la visibilidad, generando
+    // tráfico constante que le impedía a Railway detectar inactividad real
+    // y dormir el contenedor (sleepApplication).
+    clearInterval(intervaloEstados);
+    intervaloEstados = null;
+  } else {
+    actualizarEstados();
+    if (!intervaloEstados) {
+      intervaloEstados = setInterval(actualizarEstados, 4000);
+    }
+  }
 });
 </script>
 
