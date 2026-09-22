@@ -20,7 +20,7 @@ from flask import Blueprint, render_template, request, jsonify, send_from_direct
 from . import concurrency
 from . import historial_db
 from . import registro_rutas
-from .catalogo_ips import resolver, validar_identidad
+from .catalogo_ips import resolver, validar_identidad, normalizar_nit, listar_catalogo_por_responsable
 from io import BytesIO
 
 try:
@@ -149,6 +149,7 @@ def new_job_state():
         "errores_detalle": [],
         "descargas_exitosas": [],
         "errores_excel_url": None,
+        "zip_url": None,
     }
 
 
@@ -1211,6 +1212,12 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                     except Exception as e:
                         log(job, f"⚠️ No se pudo generar el Excel dedicado de errores: {e}", "warn")
             log(job, f"ZIP final creado: {final_zip_path.name}", "success")
+            try:
+                zip_rel = str(final_zip_path.relative_to(DOWNLOAD_DIR))
+                with job["lock"]:
+                    job["state"]["zip_url"] = f"/mundial/downloads/{zip_rel}"
+            except Exception:
+                pass
             zip_ya_generado = True
             # Ya terminó bien: cualquier ZIP parcial que haya quedado de
             # intentos/ciclos anteriores queda obsoleto, se borra.
@@ -1263,7 +1270,13 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
             if not job["state"].get("_reintento_activo"):
                 job["state"]["running"] = False
                 job["state"]["finished"] = True
-            job["state"]["stopping"] = False
+                job["state"]["stopping"] = False
+            # Si SÍ hay un wrapper de reintentos activo, "stopping" se deja
+            # tal cual está -- es el wrapper quien debe verla para decidir si
+            # detiene el ciclo de reintentos o si arranca uno nuevo. Antes se
+            # reseteaba aquí incondicionalmente, y por eso "Detener" durante
+            # un reintento automático no evitaba que arrancara el siguiente
+            # ciclo completo (login + navegación) de todos modos.
         job["browser"] = None
         job["context"] = None
         job["dl_dir"] = None
@@ -1344,6 +1357,7 @@ def run_automation_con_reintentos(job, usuario, password, tipo_acceso, lote, val
         job["state"]["_reintento_activo"] = False
         job["state"]["running"] = False
         job["state"]["finished"] = True
+        job["state"]["stopping"] = False
     concurrency.registrar_fin("mundial")
 
 # ==================== RUTAS FLASK ====================
@@ -1380,8 +1394,15 @@ def start_job():
     confirmar_duplicados = str(data.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
     decision_redescarga = data.get("decision_redescarga", "")
     facturas_redescarga = {str(v) for v in (data.get("facturas_redescarga") or [])}
+    ips_nit_manual = normalizar_nit(data.get("ips_nit_manual", ""))
+    _nit_check, ips_check = resolver_ips_por_usuario(usuario)
+    if ips_nit_manual:
+        _nit_check = ips_nit_manual
+        ips_check = resolver(nit=ips_nit_manual).get("nombre_estandar", ips_check)
+    if resolver(nit=_nit_check, nombre_detectado=ips_check).get("metodo") == "NO_IDENTIFICADA":
+        return jsonify({"ok": False, "requiere_seleccion_ips": True,
+                         "catalogo_ips": listar_catalogo_por_responsable()})
     try:
-        _nit_check, ips_check = resolver_ips_por_usuario(usuario)
         if _nit_check:
             ya_descargadas = historial_db.buscar_ya_descargadas_por_nit("Mundial", _nit_check, valores)
         else:
@@ -1414,6 +1435,7 @@ def start_job():
             job["state"]["logs"] = []
             job["state"]["_reintento_activo"] = False
             job["state"]["errores_excel_url"] = None
+            job["state"]["zip_url"] = None
             job["state"]["lote"] = lote
 
     dl_path = custom_path if custom_path else str(DOWNLOAD_DIR / lote_safe)
@@ -1508,6 +1530,7 @@ def get_status():
                 "error": job["state"]["error"],
                 "stats": job["state"]["stats"],
                 "errores_excel_url": job["state"].get("errores_excel_url"),
+                "zip_url": job["state"].get("zip_url"),
             })
     with jobs_registry_lock:
         activos = [j for j in jobs.values() if j["state"]["running"]]

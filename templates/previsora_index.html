@@ -1119,6 +1119,14 @@ async function startJob() {
     });
     let data = await resp.json();
 
+    if (!data.ok && data.requiere_seleccion_ips) {
+      const nitElegido = await window.solicitarSeleccionIPS(data.catalogo_ips, identidadActual);
+      if (!nitElegido) { setStatus("idle"); document.getElementById("btnStart").disabled = false; return; }
+      fd.append("ips_nit_manual", nitElegido);
+      const retryIps = await fetch("/previsora/api/start", { method: "POST", body: fd });
+      data = await retryIps.json();
+    }
+
     if (!data.ok && data.requiere_confirmacion) {
       const decision = await solicitarDecisionDuplicados(data);
       if (!decision) { setStatus("idle"); document.getElementById("btnStart").disabled = false; return; }
@@ -1186,7 +1194,7 @@ async function pollStatus() {
             }
             document.getElementById("btnStart").disabled = false;
             refreshFiles();
-            descargarExcelErroresSiHay(s.errores_excel_url);
+            descargarArchivoSiHay(s.zip_url);
             return;
         }
     } catch(e) {
@@ -1205,11 +1213,11 @@ async function pollStatus() {
     }
 }
 
-function descargarExcelErroresSiHay(url) {
-    // Auto-descarga el Excel de errores SOLO si el proceso terminó con al
-    // menos una factura fallida (el backend no manda esta URL si no hubo
-    // ningún error). Cualquier problema aquí queda contenido en este bloque
-    // y no afecta el resto del panel.
+function descargarArchivoSiHay(url) {
+    // Auto-descarga un archivo (el ZIP final, con todo adentro, incluido
+    // el Excel de errores) si el backend entregó una URL para él.
+    // Cualquier problema aquí queda contenido en este bloque y no afecta
+    // el resto del panel.
     if (!url) return;
     try {
         const a = document.createElement("a");
@@ -1219,7 +1227,7 @@ function descargarExcelErroresSiHay(url) {
         a.click();
         document.body.removeChild(a);
     } catch (e) {
-        console.error("No se pudo autodescargar el Excel de errores:", e);
+        console.error("No se pudo autodescargar el archivo:", e);
     }
 }
 

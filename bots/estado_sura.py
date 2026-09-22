@@ -32,7 +32,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file, send_
 from . import concurrency
 from . import historial_db
 from . import registro_rutas
-from .catalogo_ips import resolver, validar_identidad
+from .catalogo_ips import resolver, validar_identidad, normalizar_nit, listar_catalogo_por_responsable
 
 try:
     import openpyxl
@@ -204,6 +204,7 @@ def _estado_inicial():
         "errores_detalle": [],
         "descargas_exitosas": [],
         "errores_excel_url": None,
+        "zip_url": None,
     }
 
 
@@ -443,6 +444,7 @@ def crear_zip_final(dl_dir: Path, ips_nombre: str, zip_prefix: str, errores=None
             viejo.unlink()
         except Exception:
             pass
+    return zip_path
     return zip_path
 
 
@@ -1149,8 +1151,14 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                 procesar_lote(fallidas, es_reintento=True)
 
             generar_reporte_excel(ips_dir, ips_nombre, exitosas, errores)
-            crear_zip_final(dl_dir, ips_nombre, cfg["zip_prefix"], errores=errores)
+            zip_final_path = crear_zip_final(dl_dir, ips_nombre, cfg["zip_prefix"], errores=errores)
             zip_ya_generado = True
+            if zip_final_path:
+                try:
+                    with job_lock:
+                        job_state["zip_url"] = f"/downloads/{empresa}/{zip_final_path.name}"
+                except Exception:
+                    pass
 
             # Excel aparte, solo de errores, para descarga automática desde
             # el frontend — nunca debe poder tumbar el proceso ya exitoso.
@@ -1308,6 +1316,13 @@ def start_job(empresa):
         return jsonify({"ok": False, "error": "No se encontraron filas válidas (revisa el formato del siniestro)"}), 400
 
     ips_nombre, nit = extraer_ips_desde_usuario(usuario, cfg["mapa_ips"])
+    ips_nit_manual = normalizar_nit(request.form.get("ips_nit_manual", ""))
+    if ips_nit_manual:
+        nit = ips_nit_manual
+        ips_nombre = resolver(nit=ips_nit_manual).get("nombre_estandar", ips_nombre)
+    elif resolver(nit=nit, nombre_detectado=ips_nombre).get("metodo") == "NO_IDENTIFICADA":
+        return jsonify({"ok": False, "requiere_seleccion_ips": True,
+                         "catalogo_ips": listar_catalogo_por_responsable()})
 
     confirmar_duplicados = str(request.form.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
     decision_redescarga = request.form.get("decision_redescarga", "")
@@ -1343,7 +1358,7 @@ def start_job(empresa):
             "running": True, "finished": False, "error": None,
             "stats": {"total": 0, "descargadas": 0, "errores": 0},
             "errores_detalle": [], "descargas_exitosas": [],
-            "errores_excel_url": None,
+            "errores_excel_url": None, "zip_url": None,
         })
     job["ips_nombre"] = ips_nombre
     dl_dir_empresa = DOWNLOAD_DIR / empresa
@@ -1435,6 +1450,7 @@ def get_status(empresa):
                 "running": js["running"], "finished": js["finished"], "error": js["error"],
                 "stats": js["stats"], "logs": js["logs"][-200:],
                 "errores_excel_url": js.get("errores_excel_url"),
+                "zip_url": js.get("zip_url"),
             })
     # Sin empresa_id (ej: el panel principal): vista agregada de todas las
     # cuentas activas para esta empresa, útil para un vistazo rápido.

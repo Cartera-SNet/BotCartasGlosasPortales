@@ -18,7 +18,7 @@ from flask import Blueprint, render_template, request, jsonify, send_from_direct
 from . import concurrency
 from . import historial_db
 from . import registro_rutas
-from .catalogo_ips import resolver, validar_identidad
+from .catalogo_ips import resolver, validar_identidad, normalizar_nit, listar_catalogo_por_responsable
 from io import BytesIO
 
 try:
@@ -117,6 +117,7 @@ def new_job_state():
         "descargas_exitosas": [],
         "facturas_permitidas": [],
         "errores_excel_url": None,
+        "zip_url": None,
         "duplicados_pendientes": None,
         "duplicate_event": threading.Event(),
     }
@@ -1866,6 +1867,11 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
             generar_reporte_excel(dl_dir, periodo, ips_nombre_actual, exitosas, errores)
             crear_zip_completo(job, dl_dir, periodo, ips_nombre_actual)
             zip_parcial_generado = True
+            try:
+                with job["lock"]:
+                    job["state"]["zip_url"] = f"/bolivar/downloads/{periodo}/facturas_{periodo}_{ips_nombre_actual}.zip"
+            except Exception:
+                pass
 
             # Excel aparte, solo de errores, para descarga automática desde
             # el frontend — nunca debe poder tumbar el proceso ya exitoso.
@@ -1966,8 +1972,15 @@ def start_job():
 
     empresa_id = resolve_empresa_id(usuario)
     job = get_or_create_job(empresa_id)
-    nit_usuario = MAPA_USUARIO_NIT.get(usuario.upper())
-    ips_previa = MAPA_IPS.get(nit_usuario, "IPS_NO_IDENTIFICADA") if nit_usuario else "IPS_NO_IDENTIFICADA"
+    ips_nit_manual = normalizar_nit(data.get("ips_nit_manual", ""))
+    nit_usuario = MAPA_USUARIO_NIT.get(usuario.upper()) or ips_nit_manual
+    if not nit_usuario:
+        # La cuenta es nueva y no se logra identificar sola la IPS -- se
+        # pide al usuario que la elija a mano, en vez de arrancar con una
+        # identidad "IPS_NO_IDENTIFICADA" que ensuciaría el historial.
+        return jsonify({"ok": False, "requiere_seleccion_ips": True,
+                         "catalogo_ips": listar_catalogo_por_responsable()})
+    ips_previa = MAPA_IPS.get(nit_usuario) or resolver(nit=nit_usuario).get("nombre_estandar", "IPS_NO_IDENTIFICADA")
     decision_redescarga = str(data.get("decision_redescarga", ""))
     facturas_redescarga = {str(v) for v in (json.loads(data.get("facturas_redescarga", "[]")) if isinstance(data.get("facturas_redescarga"), str) else (data.get("facturas_redescarga") or []))}
     confirmar_duplicados = str(data.get("confirmar_duplicados", "")).lower() in ("true", "1", "on", "si", "sí")
@@ -2033,6 +2046,7 @@ def start_job():
             job["state"]["errores_detalle"] = []
             job["state"]["descargas_exitosas"] = []
             job["state"]["errores_excel_url"] = None
+            job["state"]["zip_url"] = None
             if facturas_nuevas is not None:
                 job["state"]["facturas_permitidas"] = facturas_nuevas
 
@@ -2187,6 +2201,7 @@ def get_status():
                 "logs": job["state"]["logs"][-200:],
                 "duplicados_pendientes": job["state"].get("duplicados_pendientes"),
                 "errores_excel_url": job["state"].get("errores_excel_url"),
+                "zip_url": job["state"].get("zip_url"),
             })
     # Sin empresa_id (ej: el panel principal): vista agregada de todas las
     # cuentas activas, útil para un vistazo rápido sin elegir una cuenta.

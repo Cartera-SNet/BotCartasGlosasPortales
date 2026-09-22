@@ -190,6 +190,13 @@
   color: var(--text-primary); box-shadow: 0 4px 14px rgba(0,0,0,0.12); line-height: 1.4;
 }
 .info-tooltip-wrap:hover .info-tooltip-bubble { visibility: visible; opacity: 1; }
+.advanced-toggle {
+  display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+  background:var(--bg-body); border-radius:8px; padding:9px 10px; user-select:none;
+}
+.advanced-toggle label { margin:0; font-size:0.75rem; letter-spacing:0.03em; cursor:pointer; }
+.advanced-content { display:none; margin-top:8px; flex-direction: column; gap: 10px; }
+.advanced-content.open { display: flex; }
 </style>
 </head>
 <body>
@@ -239,11 +246,19 @@
           <input type="password" id="password" class="input-field" placeholder="Digite contraseña" autocomplete="current-password">
         </div>
 
-        <div class="form-group">
-          <label>Nombre del lote (opcional)</label>
-          <input type="text" id="lote" class="input-field" placeholder="Ej: Junio_2026">
-          <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[lote]/[IPS]/</div>
-          <div class="hint"><i class="fas fa-info-circle"></i><span>La subcarpeta se nombra automáticamente según el NIT del usuario (la IPS).</span></div>
+        <div class="form-group" id="advancedBox" style="background:var(--bg-body); border-radius:8px; padding:0;">
+          <div id="advancedToggle" class="advanced-toggle">
+            <label>Configuración avanzada</label>
+            <i id="advancedChevron" class="fas fa-chevron-down" style="font-size:0.7rem; color:var(--text-secondary);"></i>
+          </div>
+          <div id="advancedContent" class="advanced-content" style="padding: 0 10px 10px;">
+            <div>
+              <label style="margin:0;">Nombre del lote (opcional)</label>
+              <input type="text" id="lote" class="input-field" placeholder="Ej: Junio_2026">
+              <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[lote]/[IPS]/</div>
+              <div class="hint"><i class="fas fa-info-circle"></i><span>La subcarpeta se nombra automáticamente según el NIT del usuario (la IPS).</span></div>
+            </div>
+          </div>
         </div>
 
         <!-- Importar lista -->
@@ -264,9 +279,13 @@
         </div>
 
         <div class="form-group">
-          <label>O pega los consecutivos (uno por línea)</label>
+          <label>O pega los consecutivos (uno por línea)
+            <span class="info-tooltip-wrap">
+              <i class="fas fa-circle-info info-tooltip-icon"></i>
+              <span class="info-tooltip-bubble">El tipo (Dev/Obj · Liquidación · Radicado) se detecta por el prefijo.</span>
+            </span>
+          </label>
           <textarea id="valores" class="input-field" placeholder="DEV-202606000097&#10;LIQ-202605001778&#10;..."></textarea>
-          <div class="hint"><i class="fas fa-info-circle"></i><span>El tipo (Dev/Obj · Liquidación · Radicado) se detecta por el prefijo.</span></div>
         </div>
 
         <div class="form-group identity-panel" id="identidadBox">
@@ -599,6 +618,14 @@ document.getElementById('valores').addEventListener('input', () => {
 });
 
 // ── Iniciar ──────────────────────────────────────────────────────────────────
+document.getElementById("advancedToggle").addEventListener("click", () => {
+  const content = document.getElementById("advancedContent");
+  const chevron = document.getElementById("advancedChevron");
+  const abierto = content.classList.contains("open");
+  content.classList.toggle("open", !abierto);
+  chevron.className = abierto ? "fas fa-chevron-down" : "fas fa-chevron-up";
+});
+
 async function startJob() {
   const usuario = document.getElementById('usuario').value.trim();
   const password = document.getElementById('password').value.trim();
@@ -621,6 +648,21 @@ async function startJob() {
     body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual })
   });
   let data = await resp.json();
+
+  if (!data.ok && data.requiere_seleccion_ips) {
+    const nitElegido = await window.solicitarSeleccionIPS(data.catalogo_ips, identidadActual);
+    if (!nitElegido) {
+      document.getElementById('btnStart').disabled = false;
+      setStatus('idle');
+      return;
+    }
+    resp = await fetch('/mundial/api/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, ips_nit_manual: nitElegido })
+    });
+    data = await resp.json();
+  }
 
   if (!data.ok && data.requiere_confirmacion) {
     const decision = await solicitarDecisionDuplicados(data);
@@ -679,7 +721,11 @@ async function pollStatus() {
       else setStatus('done');
       document.getElementById('btnStart').disabled = false;
       refreshFiles();
-      descargarExcelErroresSiHay(s.errores_excel_url);
+      // Se descarga el ZIP completo automáticamente (ya trae el Excel de
+      // errores embebido adentro, junto con todos los soportes) -- antes
+      // solo se autodescargaba el Excel suelto, dejando el ZIP para bajarlo
+      // a mano.
+      descargarArchivoSiHay(s.zip_url);
       return;
     }
   } catch(e) { console.error(e); }
@@ -699,11 +745,10 @@ async function pollStatus() {
     }
 }
 
-function descargarExcelErroresSiHay(url) {
-  // Auto-descarga el Excel de errores SOLO si el proceso terminó con al
-  // menos una factura fallida (el backend no manda esta URL si no hubo
-  // ningún error). Cualquier problema aquí queda contenido en este bloque
-  // y no afecta el resto del panel.
+function descargarArchivoSiHay(url) {
+  // Auto-descarga un archivo (el ZIP final, con todo adentro) si el
+  // backend entregó una URL para él. Cualquier problema aquí queda
+  // contenido en este bloque y no afecta el resto del panel.
   if (!url) return;
   try {
     const a = document.createElement("a");
@@ -713,7 +758,7 @@ function descargarExcelErroresSiHay(url) {
     a.click();
     document.body.removeChild(a);
   } catch (e) {
-    console.error("No se pudo autodescargar el Excel de errores:", e);
+    console.error("No se pudo autodescargar el archivo:", e);
   }
 }
 

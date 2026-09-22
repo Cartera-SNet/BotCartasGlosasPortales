@@ -22,7 +22,7 @@ descargas) para no arriesgar romper algo que ya funciona en producción.
 """
 
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
 
@@ -84,6 +84,17 @@ BOTS = [
 for _b in BOTS:
     _b["sombra"] = _rgba(_b["color"], 0.45)
     _b["tinte"] = _rgba(_b["color"], 0.07)
+
+
+@app.route("/api/catalogo_ips")
+def api_catalogo_ips():
+    """
+    Listado del catálogo central de IPS, agrupado por responsable
+    (Salud Net / Campbell) -- lo usa el modal de selección manual cuando
+    el sistema no logra detectar sola la IPS de una cuenta nueva.
+    """
+    from bots.catalogo_ips import listar_catalogo_por_responsable
+    return jsonify(listar_catalogo_por_responsable())
 
 
 @app.route("/")

@@ -46,6 +46,34 @@ ALIASES_INICIALES = {
     "MOVID IPS SAS": "901523868",
 }
 
+# Quién es responsable de cada IPS -- confirmado por el usuario, las 21 IPS
+# reales del negocio (no incluye "MEDICO QUIRURGICA TULUA", pendiente de
+# confirmar si sigue vigente). Se usa para el selector manual de identidad
+# cuando el sistema no logra detectar la IPS sola.
+RESPONSABLE_INICIAL = {
+    "900827065": "Salud Net",
+    "900657731": "Salud Net",
+    "900954800": "Salud Net",
+    "900513306": "Salud Net",
+    "900267064": "Salud Net",
+    "900600550": "Salud Net",
+    "900631361": "Salud Net",
+    "900257333": "Salud Net",
+    "900792417": "Salud Net",
+    "900826509": "Salud Net",
+    "901081281": "Salud Net",
+    "901959993": "Salud Net",
+    "900469882": "Campbell",
+    "900847382": "Campbell",
+    "900900754": "Campbell",
+    "900002780": "Campbell",
+    "900558595": "Campbell",
+    "901523868": "Campbell",
+    "802024329": "Campbell",
+    "901057487": "Campbell",
+    "901149757": "Campbell",
+}
+
 
 def normalizar_nit(valor):
     digitos = re.sub(r"\D", "", str(valor or ""))
@@ -65,14 +93,34 @@ def resolver(nit=None, nombre_detectado=None, catalogo=None, aliases=None):
     catalogo = catalogo or CATALOGO_INICIAL
     aliases = aliases or ALIASES_INICIALES
     if nit and nit in catalogo:
-        return {"nit": nit, "nombre_estandar": catalogo[nit], "nombre_detectado": nombre_detectado or catalogo[nit], "metodo": "NIT"}
+        return {"nit": nit, "nombre_estandar": catalogo[nit], "nombre_detectado": nombre_detectado or catalogo[nit],
+                "metodo": "NIT", "responsable": RESPONSABLE_INICIAL.get(nit)}
     nombre_normalizado = normalizar_nombre(nombre_detectado)
     nit_por_nombre = {normalizar_nombre(v): k for k, v in catalogo.items()}
     nit_por_nombre.update({normalizar_nombre(k): v for k, v in aliases.items()})
     nit_resuelto = nit_por_nombre.get(nombre_normalizado)
     if nit_resuelto:
-        return {"nit": nit_resuelto, "nombre_estandar": catalogo.get(nit_resuelto, nombre_detectado), "nombre_detectado": nombre_detectado or "", "metodo": "NOMBRE"}
-    return {"nit": nit, "nombre_estandar": "IPS_NO_IDENTIFICADA", "nombre_detectado": nombre_detectado or "", "metodo": "NO_IDENTIFICADA"}
+        return {"nit": nit_resuelto, "nombre_estandar": catalogo.get(nit_resuelto, nombre_detectado),
+                "nombre_detectado": nombre_detectado or "", "metodo": "NOMBRE",
+                "responsable": RESPONSABLE_INICIAL.get(nit_resuelto)}
+    return {"nit": nit, "nombre_estandar": "IPS_NO_IDENTIFICADA", "nombre_detectado": nombre_detectado or "",
+            "metodo": "NO_IDENTIFICADA", "responsable": None}
+
+
+def listar_catalogo_por_responsable():
+    """
+    Para el selector manual de IPS (cuando el sistema no logra detectarla
+    sola): devuelve {"Salud Net": [...], "Campbell": [...]}, cada una con
+    su nit y nombre_estandar, ordenadas alfabéticamente.
+    """
+    grupos = {"Salud Net": [], "Campbell": []}
+    for nit, nombre in CATALOGO_INICIAL.items():
+        responsable = RESPONSABLE_INICIAL.get(nit)
+        if responsable in grupos:
+            grupos[responsable].append({"nit": nit, "nombre_estandar": nombre})
+    for lista in grupos.values():
+        lista.sort(key=lambda x: x["nombre_estandar"])
+    return grupos
 
 
 def validar_identidad(valor):

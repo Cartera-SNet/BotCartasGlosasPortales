@@ -29,7 +29,7 @@ from flask import Blueprint, render_template, request, jsonify, send_from_direct
 from . import concurrency
 from . import historial_db
 from . import registro_rutas
-from .catalogo_ips import resolver, validar_identidad
+from .catalogo_ips import resolver, validar_identidad, normalizar_nit, listar_catalogo_por_responsable
 from io import BytesIO
 
 # Para generar Excel
@@ -111,6 +111,7 @@ def new_job_state():
         "descargas_exitosas": [],
         "facturas_permitidas": [],
         "errores_excel_url": None,
+        "zip_url": None,
         "duplicados_pendientes": None,
         "duplicate_event": threading.Event(),
     }
@@ -1559,6 +1560,11 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                 generar_reporte_excel(dl_dir, periodo, ips_nombre_actual, exitosas, errores)
                 crear_zip_completo(job, dl_dir, periodo, ips_nombre_actual)
                 zip_parcial_generado = True
+                try:
+                    with job["lock"]:
+                        job["state"]["zip_url"] = f"/previsora/downloads/{periodo}/facturas_{periodo}_{ips_nombre_actual}.zip"
+                except Exception:
+                    pass
                 return
 
             # ========== PROCESAR FACTURAS PENDIENTES ==========
@@ -1872,6 +1878,11 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
             # ========== ZIP FINAL (incluye Excel y Errores) ==========
             crear_zip_completo(job, dl_dir, periodo, ips_nombre_actual)
             zip_parcial_generado = True
+            try:
+                with job["lock"]:
+                    job["state"]["zip_url"] = f"/previsora/downloads/{periodo}/facturas_{periodo}_{ips_nombre_actual}.zip"
+            except Exception:
+                pass
 
             if fallidas:
                 log(job, f"⚠️ Proceso completado con {len(fallidas)} factura(s) con error persistente. Ver Excel para detalle.")
@@ -2027,8 +2038,13 @@ def start_job():
 
     empresa_id = resolve_empresa_id(usuario)
     job = get_or_create_job(empresa_id)
-    nit_usuario = (re.search(r"(\d{9,12})", usuario) or [None, None])[1]
-    ips_previa = MAPA_IPS.get(nit_usuario, "IPS_NO_IDENTIFICADA") if nit_usuario else "IPS_NO_IDENTIFICADA"
+    ips_nit_manual = normalizar_nit(data.get("ips_nit_manual", ""))
+    nit_usuario = ips_nit_manual or (re.search(r"(\d{9,12})", usuario) or [None, None])[1]
+    _resuelta_previa = resolver(nit=nit_usuario)
+    if _resuelta_previa.get("metodo") == "NO_IDENTIFICADA":
+        return jsonify({"ok": False, "requiere_seleccion_ips": True,
+                         "catalogo_ips": listar_catalogo_por_responsable()})
+    ips_previa = _resuelta_previa.get("nombre_estandar", "IPS_NO_IDENTIFICADA")
     decision_redescarga = str(data.get("decision_redescarga", ""))
     raw_selected = data.get("facturas_redescarga", "[]")
     try:
@@ -2067,6 +2083,7 @@ def start_job():
             job["state"]["errores_detalle"] = []
             job["state"]["descargas_exitosas"] = []
             job["state"]["errores_excel_url"] = None
+            job["state"]["zip_url"] = None
             if facturas_nuevas is not None:
                 job["state"]["facturas_permitidas"] = facturas_nuevas
 
@@ -2185,6 +2202,7 @@ def get_status():
                 "logs": job["state"]["logs"][-200:],
                 "duplicados_pendientes": job["state"].get("duplicados_pendientes"),
                 "errores_excel_url": job["state"].get("errores_excel_url"),
+                "zip_url": job["state"].get("zip_url"),
             })
     with jobs_registry_lock:
         activos = [j for j in jobs.values() if j["state"]["running"]]

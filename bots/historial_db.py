@@ -182,6 +182,28 @@ def registrar_descargas(aseguradora, ips_nombre, periodo, identidad, items, ips=
             conn.close()
 
 
+def _filtrar_por_mismo_mes(filas):
+    """
+    Nueva regla de negocio: una Carta Glosa SÍ se puede volver a descargar
+    si la vez anterior fue en un mes/año distinto al actual -- solo se
+    considera "ya descargada" (y por lo tanto dispara el modal de decisión)
+    si la descarga previa fue en el MISMO año y mes de hoy.
+    Si la fecha guardada no se puede interpretar, se es conservador y de
+    todos modos se avisa (mejor preguntar de más que perder el aviso).
+    """
+    ahora = datetime.now(timezone.utc)
+    resultado = {}
+    for factura, fecha_str in filas:
+        try:
+            fecha = datetime.fromisoformat(str(fecha_str))
+        except Exception:
+            resultado[str(factura)] = fecha_str
+            continue
+        if fecha.year == ahora.year and fecha.month == ahora.month:
+            resultado[str(factura)] = fecha_str
+    return resultado
+
+
 def buscar_ya_descargadas(aseguradora, ips_nombre, facturas):
     if not facturas:
         return {}
@@ -192,7 +214,7 @@ def buscar_ya_descargadas(aseguradora, ips_nombre, facturas):
             placeholders = ",".join([m] * len(facturas))
             cur.execute(f"SELECT factura,fecha_descarga FROM descargas WHERE aseguradora={m} AND ips_nombre={m} AND factura IN ({placeholders})",
                         [aseguradora, ips_nombre] + [str(f) for f in facturas])
-            return {str(a): b for a, b in cur.fetchall()}
+            return _filtrar_por_mismo_mes(cur.fetchall())
         finally:
             conn.close()
 
@@ -206,7 +228,7 @@ def buscar_ya_descargadas_por_nit(aseguradora, ips_nit, facturas):
             cur = conn.cursor(); m = _marcador(); placeholders = ",".join([m] * len(facturas))
             cur.execute(f"SELECT factura,fecha_descarga FROM descargas WHERE aseguradora={m} AND ips_nit={m} AND factura IN ({placeholders})",
                         [aseguradora, ips_nit] + [str(f) for f in facturas])
-            return {str(a): b for a, b in cur.fetchall()}
+            return _filtrar_por_mismo_mes(cur.fetchall())
         finally:
             conn.close()
 
