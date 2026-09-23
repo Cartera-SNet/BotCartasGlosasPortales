@@ -281,8 +281,9 @@ def extraer_ips_desde_usuario(usuario: str, mapa_ips: dict):
 
 def log(job, empresa, msg, level="info"):
     ts = datetime.now().strftime("%H:%M:%S")
-    with job["lock"]:
-        job["state"]["logs"].append({"ts": ts, "msg": msg, "level": level})
+    if job is not None:
+        with job["lock"]:
+            job["state"]["logs"].append({"ts": ts, "msg": msg, "level": level})
     (logger.error if level == "error" else logger.info)(f"[{empresa}] {msg}")
     if level == "error" and job is not None:
         try:
@@ -357,7 +358,7 @@ def guardar_progreso(ips_dir: Path, exitosas, meta=None):
             ips_nombre=(meta or {}).get("ips_nombre", "IPS_NO_IDENTIFICADA"),
             periodo=(meta or {}).get("periodo"), identidad=(meta or {}).get("identidad"),
             items=[{"factura": e["factura"], "siniestro": f"{e['numero']}/{e['anio']}*{e['cuenta']}", "fecha_descarga": e.get("timestamp")} for e in exitosas],
-            ips=(meta or {}).get("ips"),
+            ips=(meta or {}).get("ips"), sede=(meta or {}).get("sede"),
         )
     except Exception as e:
         logger.warning(f"Error al registrar en el historial (tabla descargas): {e}")
@@ -917,6 +918,7 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                     "ejecucion_id": job["state"].get("ejecucion_id"),
                     "ips_nombre": ips_nombre,
                     "aseguradora": EMPRESAS[empresa]["nombre"],
+                    "sede": ciudad,
                 })
                 with job_lock:
                     job_state["stats"]["descargadas"] += 1
@@ -1538,7 +1540,7 @@ def delete_all_files(empresa):
                 if not ips or f.name.startswith(f"{cfg['zip_prefix']}_{ips}_"):
                     f.unlink()
                     eliminados += 1
-        log(job, empresa, f"🗑️ ZIPs eliminados: {eliminados}")
+        log(None, empresa, f"🗑️ ZIPs eliminados: {eliminados}")
         return jsonify({"ok": True, "message": f"Se eliminaron {eliminados} ZIP(s).", "eliminados": eliminados})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
