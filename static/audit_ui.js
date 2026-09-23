@@ -81,13 +81,43 @@
       }
       .aui-btn-primary:hover { opacity: .92; transform: translateY(-1px); }
       .aui-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+      .aui-radio-row {
+        display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+        font-weight: 600; font-size: 0.85rem; border-radius: 10px;
+        border: 1.5px solid var(--border, #e2e8f0); margin-bottom: 8px; cursor: pointer;
+        transition: border-color .15s, background .15s;
+      }
+      .aui-radio-row:has(input:checked) { border-color: var(--accent, #4f46e5); background: var(--accent-light, #ede9fe); }
+      .aui-radio-row.aui-radio-row-checked { border-color: var(--accent, #4f46e5); background: var(--accent-light, #ede9fe); }
+      .aui-radio-icon { font-size: 1.05rem; line-height: 1; }
+      .aui-search-wrap { position: relative; margin-bottom: 8px; }
+      .aui-search-wrap input {
+        width: 100%; padding: 8px 12px 8px 30px; border-radius: 8px;
+        border: 1px solid var(--border, #e2e8f0); font-size: 0.8rem;
+        background: var(--bg-card, #fff); color: var(--text-primary, #1e293b);
+      }
+      .aui-search-wrap input:focus { outline: none; border-color: var(--accent, #4f46e5); }
+      .aui-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: var(--text-secondary, #64748b); }
+      .aui-checkbox-row.aui-hidden { display: none; }
+      .aui-empty-search { padding: 10px 4px; color: var(--text-secondary, #64748b); font-size: 0.8rem; text-align: center; display: none; }
     `;
     document.head.appendChild(style);
   }
 
+  // Orden ascendente por valor numérico cuando la factura es un número
+  // puro (la mayoría de los casos); si trae letras (como los consecutivos
+  // de Mundial, DEV-xxx/LIQ-xxx), se ordena alfabéticamente como respaldo.
+  function ordenarFacturas(lista) {
+    return [...lista].sort((a, b) => {
+      const na = Number(a), nb = Number(b);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return String(a).localeCompare(String(b));
+    });
+  }
+
   window.solicitarDecisionDuplicados = function (data) {
     inyectarEstilos();
-    const previas = Object.keys(data.ya_descargadas || {});
+    const previas = ordenarFacturas(Object.keys(data.ya_descargadas || {}));
     if (!previas.length) return Promise.resolve(null);
     return new Promise(resolve => {
       const overlay = document.createElement('div');
@@ -96,22 +126,43 @@
       box.className = 'aui-box';
       box.innerHTML = `<h3 class="aui-title">Facturas encontradas previamente</h3><p class="aui-subtitle">Se encontraron <strong>${previas.length}</strong> facturas ya descargadas <strong>este mismo mes</strong>. Elige qué hacer antes de continuar.</p>`;
       const options = [
-        ['ninguna', 'No volver a descargar ninguna'],
-        ['todas', 'Volver a descargar todas'],
-        ['seleccionadas', 'Seleccionar cuáles volver a descargar']
+        ['ninguna', '🚫', 'No volver a descargar ninguna'],
+        ['todas', '🔁', 'Volver a descargar todas'],
+        ['seleccionadas', '🔎', 'Seleccionar cuáles volver a descargar']
       ];
-      const radios = options.map(([value, label], index) => `<label class="aui-radio-row"><input type="radio" name="duplicateDecision" value="${value}" ${index === 0 ? 'checked' : ''}>${label}</label>`).join('');
+      const radios = options.map(([value, icon, label], index) => `<label class="aui-radio-row"><input type="radio" name="duplicateDecision" value="${value}" ${index === 0 ? 'checked' : ''}><span class="aui-radio-icon">${icon}</span>${label}</label>`).join('');
       box.insertAdjacentHTML('beforeend', radios);
+      const marcarSeleccionada = () => {
+        box.querySelectorAll('.aui-radio-row').forEach(row => {
+          row.classList.toggle('aui-radio-row-checked', row.querySelector('input').checked);
+        });
+      };
+      box.querySelectorAll('input[name=duplicateDecision]').forEach(r => r.addEventListener('change', marcarSeleccionada));
+      marcarSeleccionada();
       const list = document.createElement('div');
       list.className = 'aui-list';
       list.style.display = 'none';
-      list.innerHTML = `<div class="aui-list-header"><strong>Facturas detectadas</strong><span id="duplicateCount" class="aui-list-count"></span></div><div style="display:flex;gap:8px;margin-bottom:8px"><button type="button" class="aui-btn-ghost-sm" data-select="all">Seleccionar todas</button><button type="button" class="aui-btn-ghost-sm" data-select="none">Deseleccionar todas</button></div>` + previas.map(f => `<label class="aui-checkbox-row"><input type="checkbox" value="${f}"> <span>${f}</span><small>Descargada en ${formatearMesAnio(data.ya_descargadas[f])}</small></label>`).join('');
+      list.innerHTML = `<div class="aui-list-header"><strong>Facturas detectadas</strong><span id="duplicateCount" class="aui-list-count"></span></div>` +
+        `<div class="aui-search-wrap"><span class="aui-search-icon">🔎</span><input type="text" id="duplicateSearch" placeholder="Buscar factura..."></div>` +
+        `<div style="display:flex;gap:8px;margin-bottom:8px"><button type="button" class="aui-btn-ghost-sm" data-select="all">Seleccionar todas</button><button type="button" class="aui-btn-ghost-sm" data-select="none">Deseleccionar todas</button></div>` +
+        `<div id="duplicateItems">` + previas.map(f => `<label class="aui-checkbox-row" data-factura="${f}"><input type="checkbox" value="${f}"> <span>${f}</span><small>Descargada en ${formatearMesAnio(data.ya_descargadas[f])}</small></label>`).join('') + `</div>` +
+        `<div class="aui-empty-search" id="duplicateEmpty">Ninguna factura coincide con la búsqueda.</div>`;
       box.appendChild(list);
       box.insertAdjacentHTML('beforeend', '<div class="aui-footer"><button type="button" class="aui-btn" data-cancel>Cancelar</button><button type="button" class="aui-btn-primary" data-continue>Continuar</button></div>');
       const update = () => { const chosen = list.querySelectorAll('input[type=checkbox]:checked').length; const count = list.querySelector('#duplicateCount'); if (count) count.textContent = `${chosen} seleccionadas`; };
       box.querySelectorAll('input[name=duplicateDecision]').forEach(r => r.addEventListener('change', e => { list.style.display = e.target.value === 'seleccionadas' ? 'block' : 'none'; update(); }));
-      list.querySelector('[data-select=all]').onclick = () => { list.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true); update(); };
+      list.querySelector('[data-select=all]').onclick = () => { list.querySelectorAll('.aui-checkbox-row:not(.aui-hidden) input[type=checkbox]').forEach(c => c.checked = true); update(); };
       list.querySelector('[data-select=none]').onclick = () => { list.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false); update(); };
+      list.querySelector('#duplicateSearch').addEventListener('input', e => {
+        const q = e.target.value.trim().toLowerCase();
+        let visibles = 0;
+        list.querySelectorAll('.aui-checkbox-row').forEach(row => {
+          const coincide = row.dataset.factura.toLowerCase().includes(q);
+          row.classList.toggle('aui-hidden', !coincide);
+          if (coincide) visibles++;
+        });
+        list.querySelector('#duplicateEmpty').style.display = visibles === 0 ? 'block' : 'none';
+      });
       list.addEventListener('change', update);
       box.querySelector('[data-cancel]').onclick = () => { overlay.remove(); resolve(null); };
       box.querySelector('[data-continue]').onclick = () => { const decision = box.querySelector('input[name=duplicateDecision]:checked').value; const selected = [...list.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value); overlay.remove(); resolve({ decision, selected }); };

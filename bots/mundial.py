@@ -14,7 +14,7 @@ import logging
 import zipfile
 import tempfile
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_from_directory
 from . import concurrency
@@ -334,10 +334,10 @@ def guardar_progreso(job, ips_dir, completadas, nuevo_item=None, meta=None):
     if nuevo_item:
         detalle[str(nuevo_item["factura"])] = {
             "tipo": nuevo_item.get("tipo"),
-            "fecha_descarga": nuevo_item.get("fecha_descarga") or datetime.now().isoformat(),
+            "fecha_descarga": nuevo_item.get("fecha_descarga") or datetime.now(timezone.utc).isoformat(),
         }
     try:
-        data = {"completadas": list(completadas), "detalle": detalle, "actualizado": datetime.now().isoformat()}
+        data = {"completadas": list(completadas), "detalle": detalle, "actualizado": datetime.now(timezone.utc).isoformat()}
         if meta:
             data["meta"] = meta
         with open(p, "w", encoding="utf-8") as f:
@@ -915,7 +915,7 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                                 "consecutivo": valor,
                                 "tipo": "No Dev/Obj",
                                 "error": str(e),
-                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                                 "captura": "",
                             })
                             job["state"]["stats"]["errores"] += 1
@@ -996,7 +996,7 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                                 "consecutivo": valor,
                                 "tipo": "No Liquidación",
                                 "error": str(e),
-                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                                 "captura": "",
                             })
                             job["state"]["stats"]["errores"] += 1
@@ -1074,7 +1074,7 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
                                 "consecutivo": valor,
                                 "tipo": "No Radicado",
                                 "error": str(e),
-                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                                 "captura": "",
                             })
                             job["state"]["stats"]["errores"] += 1

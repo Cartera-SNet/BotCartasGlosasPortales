@@ -26,7 +26,7 @@ import unicodedata
 import threading
 import logging
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_file, send_from_directory, abort
 from . import concurrency
@@ -336,14 +336,14 @@ def guardar_progreso(ips_dir: Path, exitosas, meta=None):
         detalle = {
             e["factura"]: {
                 "siniestro": f"{e['numero']}/{e['anio']}*{e['cuenta']}",
-                "fecha_descarga": e.get("timestamp") or datetime.now().isoformat(),
+                "fecha_descarga": e.get("timestamp") or datetime.now(timezone.utc).isoformat(),
             }
             for e in exitosas
         }
         data = {
             "completadas": list(detalle.keys()),
             "detalle": detalle,
-            "actualizado": datetime.now().isoformat(),
+            "actualizado": datetime.now(timezone.utc).isoformat(),
         }
         if meta:
             data["meta"] = meta
@@ -909,7 +909,7 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                 exitosas.append({
                     "factura": factura, "numero": fila["numero"], "anio": fila["anio"],
                     "cuenta": fila["cuenta"], "archivo": destino.name,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
                 completadas.add(factura)
                 guardar_progreso(ips_dir, exitosas, meta={
@@ -938,7 +938,7 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
                 errores.append({
                     "factura": factura, "siniestro_raw": fila["siniestro_raw"],
                     "error": str(e), "captura": captura.name if captura else "",
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
                 if factura not in errores_contados:
                     errores_contados.add(factura)

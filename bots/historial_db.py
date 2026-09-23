@@ -168,7 +168,17 @@ def inicializar():
 
 
 # Neon no se sustituye silenciosamente por SQLite cuando DATABASE_URL existe.
-inicializar()
+try:
+    inicializar()
+except Exception as _exc:
+    if _USA_POSTGRES:
+        print("\n" + "=" * 60)
+        print("  ❌ No se pudo conectar a Neon (Postgres)")
+        print(f"     {_exc}")
+        print("     Revisa la cadena DATABASE_URL -- si estás corriendo")
+        print("     esto local, revisa el valor dentro de iniciar.bat.")
+        print("=" * 60 + "\n")
+    raise
 
 
 def _resolver_ips(nit=None, nombre=None):

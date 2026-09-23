@@ -23,7 +23,7 @@ import time
 import threading
 import logging
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file
 from . import concurrency
@@ -109,7 +109,7 @@ def new_job_state():
         "error": None,
         "errores_detalle": [],
         "descargas_exitosas": [],
-        "facturas_permitidas": [],
+        "facturas_permitidas": None,
         "errores_excel_url": None,
         "zip_url": None,
         "duplicados_pendientes": None,
@@ -402,10 +402,10 @@ def guardar_progreso(job, ips_dir, completadas, nuevo_item=None, meta=None):
     if nuevo_item:
         detalle[str(nuevo_item["factura"])] = {
             "tipo": nuevo_item.get("tipo"),
-            "fecha_descarga": nuevo_item.get("fecha_descarga") or datetime.now().isoformat(),
+            "fecha_descarga": nuevo_item.get("fecha_descarga") or datetime.now(timezone.utc).isoformat(),
         }
     try:
-        data = {"completadas": list(completadas), "detalle": detalle, "actualizado": datetime.now().isoformat()}
+        data = {"completadas": list(completadas), "detalle": detalle, "actualizado": datetime.now(timezone.utc).isoformat()}
         if meta:
             data["meta"] = meta
         with open(progreso_path, "w", encoding="utf-8") as f:
@@ -1154,7 +1154,7 @@ def _download_factura(job, page, context, modal_frame, fac: dict, dl_dir: Path, 
             "factura": num,
             "estado": fac["estado"],
             "archivo": str(out_path),
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         })
 
     _cerrar_traza_factura(page)
@@ -1525,15 +1525,23 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                             "factura": fac['num'],
                             "estado": fac['estado'],
                             "archivo": str(ips_dir / ("Auditada" if fac['tipo']=='auditada' else "Devolucion") / f"Factura_{fac['num']}_{('Envios_D' if fac['tipo']=='auditada' else 'ActaDevolucion')}.pdf"),
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                         })
                 else:
                     facturas_pendientes.append(fac)
 
-            # Aplicar filtro opcional por lista de facturas permitidas
+            # Aplicar filtro opcional por lista de facturas permitidas.
+            # OJO: None significa "sin filtro, procesar todo lo que traiga
+            # el portal" -- pero una lista vacía [] significa "el filtro
+            # dejó CERO facturas por procesar" (por ejemplo, si el usuario
+            # eligió 'no volver a descargar ninguna' y las 4 que subió ya
+            # estaban todas repetidas). Antes se usaba "if permitidas:",
+            # que en Python trata [] como falso -- así que el filtro se
+            # saltaba entero y terminaba escaneando/descargando TODO el
+            # período, exactamente lo que no debía pasar.
             with job["lock"]:
-                permitidas = job["state"].get("facturas_permitidas", [])
-            if permitidas:
+                permitidas = job["state"].get("facturas_permitidas")
+            if permitidas is not None:
                 original_count = len(facturas_pendientes)
                 facturas_pendientes = [fac for fac in facturas_pendientes if fac['num'] in permitidas]
                 log(job, f"📋 Filtro activo: solo {len(facturas_pendientes)} de {original_count} facturas están en la lista permitida.")
@@ -1641,7 +1649,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                                         "factura": fac['num'],
                                         "estado": fac['estado'],
                                         "error": "Factura no existe en el sistema (No se encontraron registros)",
-                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                                         "captura": ""
                                     })
                                     try:
@@ -1830,7 +1838,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                                     if not reintentos_largos and intento > 4
                                     else f"Error persistente tras {MAX_REINTENTOS} intentos automáticos"
                                 ),
-                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                                 "captura": ""
                             }
                             try:
@@ -2084,12 +2092,13 @@ def start_job():
             job["state"]["descargas_exitosas"] = []
             job["state"]["errores_excel_url"] = None
             job["state"]["zip_url"] = None
+            job["state"]["facturas_permitidas"] = None
             if facturas_nuevas is not None:
                 job["state"]["facturas_permitidas"] = facturas_nuevas
 
     if facturas_nuevas is not None:
         log(job, f"📄 Filtro de {len(facturas_nuevas)} facturas aplicado junto con el arranque.")
-    elif job["state"].get("facturas_permitidas"):
+    elif job["state"].get("facturas_permitidas") is not None:
         log(job, f"📄 Usando filtro de {len(job['state']['facturas_permitidas'])} facturas cargado previamente.")
 
     dl_path = custom_path if custom_path else str(DOWNLOAD_DIR / periodo_input)
