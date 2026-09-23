@@ -104,8 +104,8 @@ def inicializar():
                 cur.execute("""CREATE OR REPLACE VIEW descargas_detalladas AS
                     SELECT ROW_NUMBER() OVER (ORDER BY d.fecha_migrado, d.id) AS correlativo,
                         d.id, d.aseguradora, i.nombre_estandar AS ips_nombre, i.nit AS ips_nit,
-                        i.responsable, d.factura, d.siniestro, d.periodo, d.identidad, d.sede,
-                        d.fecha_descarga, d.anio_descarga, d.mes_descarga, d.dia_descarga
+                        i.responsable, d.factura, d.siniestro, d.periodo, d.identidad,
+                        d.fecha_descarga, d.anio_descarga, d.mes_descarga, d.dia_descarga, d.sede
                     FROM descargas d LEFT JOIN ips i ON i.id = d.ips_id
                     ORDER BY d.fecha_migrado, d.id""")
                 cur.execute("""CREATE TABLE IF NOT EXISTS ejecucion_facturas (
