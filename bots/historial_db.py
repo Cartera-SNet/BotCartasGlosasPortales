@@ -19,6 +19,14 @@ DB_PATH = Path(os.environ.get("HISTORIAL_DB_PATH", str(BASE_DIR / "downloads" / 
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 _lock = threading.RLock()
 
+# En Postgres/Neon, la TABLA real donde escribe el programa se llama
+# "descargas_raw" -- el nombre "descargas" queda libre para una VISTA
+# de solo lectura (ver el script de migración) que muestra los datos ya
+# legibles: nombre de IPS sin guiones bajos, y un consecutivo sin huecos.
+# En SQLite (Local/.exe) no hace falta este cambio -- nadie navega ese
+# archivo a mano con un editor SQL, así que se deja igual que siempre.
+TABLA_DESCARGAS = "descargas_raw" if _USA_POSTGRES else "descargas"
+
 
 def _id_type():
     return "SERIAL PRIMARY KEY" if _USA_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
@@ -45,12 +53,12 @@ def _asegurar_columnas_descargas(cur):
     }
     if _USA_POSTGRES:
         for nombre, tipo in columnas.items():
-            cur.execute(f"ALTER TABLE descargas ADD COLUMN IF NOT EXISTS {nombre} {tipo}")
+            cur.execute(f"ALTER TABLE {TABLA_DESCARGAS} ADD COLUMN IF NOT EXISTS {nombre} {tipo}")
         return
-    existentes = {row[1] for row in cur.execute("PRAGMA table_info(descargas)").fetchall()}
+    existentes = {row[1] for row in cur.execute(f"PRAGMA table_info({TABLA_DESCARGAS})").fetchall()}
     for nombre, tipo in columnas.items():
         if nombre not in existentes:
-            cur.execute(f"ALTER TABLE descargas ADD COLUMN {nombre} {tipo}")
+            cur.execute(f"ALTER TABLE {TABLA_DESCARGAS} ADD COLUMN {nombre} {tipo}")
 
 
 def inicializar():
@@ -59,20 +67,20 @@ def inicializar():
         try:
             cur = conn.cursor()
             if _USA_POSTGRES:
-                cur.execute("""CREATE TABLE IF NOT EXISTS descargas (
+                cur.execute(f"""CREATE TABLE IF NOT EXISTS {TABLA_DESCARGAS} (
                     id SERIAL PRIMARY KEY, aseguradora TEXT NOT NULL, ips_nombre TEXT NOT NULL,
                     factura TEXT NOT NULL, siniestro TEXT, periodo TEXT, identidad TEXT,
                     fecha_descarga TEXT NOT NULL, fecha_migrado TEXT NOT NULL,
                     UNIQUE(aseguradora, ips_nombre, factura))""")
             else:
-                cur.execute("""CREATE TABLE IF NOT EXISTS descargas (
+                cur.execute(f"""CREATE TABLE IF NOT EXISTS {TABLA_DESCARGAS} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, aseguradora TEXT NOT NULL,
                     ips_nombre TEXT NOT NULL, factura TEXT NOT NULL, siniestro TEXT,
                     periodo TEXT, identidad TEXT, fecha_descarga TEXT NOT NULL,
                     fecha_migrado TEXT NOT NULL, UNIQUE(aseguradora, ips_nombre, factura))""")
             _asegurar_columnas_descargas(cur)
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_ips ON descargas(aseguradora, ips_nombre)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_factura ON descargas(aseguradora, ips_nombre, factura)")
+            cur.execute(f"CREATE INDEX IF NOT EXISTS idx_ips ON {TABLA_DESCARGAS}(aseguradora, ips_nombre)")
+            cur.execute(f"CREATE INDEX IF NOT EXISTS idx_factura ON {TABLA_DESCARGAS}(aseguradora, ips_nombre, factura)")
             cur.execute(f"""CREATE TABLE IF NOT EXISTS ips (
                 id {_id_type()}, nit TEXT NOT NULL UNIQUE, nombre_estandar TEXT NOT NULL,
                 razon_social TEXT, activo INTEGER NOT NULL DEFAULT 1,
@@ -124,22 +132,24 @@ def registrar_ips(ips):
     if not ips or not ips.get("nit"):
         return None
     ahora = datetime.now(timezone.utc).isoformat()
+    responsable = ips.get("responsable")
     with _lock:
         conn = _conectar()
         try:
             cur = conn.cursor()
             if _USA_POSTGRES:
-                cur.execute("""INSERT INTO ips (nit,nombre_estandar,fecha_creacion,fecha_actualizacion)
-                    VALUES (%s,%s,%s,%s)
+                cur.execute("""INSERT INTO ips (nit,nombre_estandar,responsable,fecha_creacion,fecha_actualizacion)
+                    VALUES (%s,%s,%s,%s,%s)
                     ON CONFLICT(nit) DO UPDATE SET nombre_estandar=EXCLUDED.nombre_estandar,
+                    responsable=COALESCE(EXCLUDED.responsable, ips.responsable),
                     fecha_actualizacion=EXCLUDED.fecha_actualizacion RETURNING id""",
-                    (ips["nit"], ips["nombre_estandar"], ahora, ahora))
+                    (ips["nit"], ips["nombre_estandar"], responsable, ahora, ahora))
                 result = cur.fetchone()[0]
             else:
-                cur.execute("INSERT OR IGNORE INTO ips (nit,nombre_estandar,fecha_creacion,fecha_actualizacion) VALUES (?,?,?,?)",
-                            (ips["nit"], ips["nombre_estandar"], ahora, ahora))
-                cur.execute("UPDATE ips SET nombre_estandar=?,fecha_actualizacion=? WHERE nit=?",
-                            (ips["nombre_estandar"], ahora, ips["nit"]))
+                cur.execute("INSERT OR IGNORE INTO ips (nit,nombre_estandar,responsable,fecha_creacion,fecha_actualizacion) VALUES (?,?,?,?,?)",
+                            (ips["nit"], ips["nombre_estandar"], responsable, ahora, ahora))
+                cur.execute("UPDATE ips SET nombre_estandar=?,responsable=COALESCE(?,responsable),fecha_actualizacion=? WHERE nit=?",
+                            (ips["nombre_estandar"], responsable, ahora, ips["nit"]))
                 cur.execute("SELECT id FROM ips WHERE nit=?", (ips["nit"],))
                 result = cur.fetchone()[0]
             conn.commit()
@@ -163,7 +173,7 @@ def registrar_descargas(aseguradora, ips_nombre, periodo, identidad, items, ips=
         try:
             cur = conn.cursor()
             if _USA_POSTGRES:
-                psycopg2.extras.execute_values(cur, """INSERT INTO descargas
+                psycopg2.extras.execute_values(cur, f"""INSERT INTO {TABLA_DESCARGAS}
                     (aseguradora,ips_nombre,factura,siniestro,periodo,identidad,fecha_descarga,fecha_migrado,
                      ips_id,ips_nit,nombre_detectado,metodo_identificacion,primera_descarga,ultima_descarga)
                     VALUES %s ON CONFLICT (aseguradora,ips_nombre,factura) DO UPDATE SET
@@ -172,7 +182,7 @@ def registrar_descargas(aseguradora, ips_nombre, periodo, identidad, items, ips=
                     ips_id=EXCLUDED.ips_id,ips_nit=EXCLUDED.ips_nit,nombre_detectado=EXCLUDED.nombre_detectado,
                     metodo_identificacion=EXCLUDED.metodo_identificacion,ultima_descarga=EXCLUDED.ultima_descarga""", filas)
             else:
-                cur.executemany("""INSERT OR REPLACE INTO descargas
+                cur.executemany(f"""INSERT OR REPLACE INTO {TABLA_DESCARGAS}
                     (aseguradora,ips_nombre,factura,siniestro,periodo,identidad,fecha_descarga,fecha_migrado,
                      ips_id,ips_nit,nombre_detectado,metodo_identificacion,primera_descarga,ultima_descarga)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", filas)
@@ -212,7 +222,7 @@ def buscar_ya_descargadas(aseguradora, ips_nombre, facturas):
         try:
             cur = conn.cursor(); m = _marcador()
             placeholders = ",".join([m] * len(facturas))
-            cur.execute(f"SELECT factura,fecha_descarga FROM descargas WHERE aseguradora={m} AND ips_nombre={m} AND factura IN ({placeholders})",
+            cur.execute(f"SELECT factura,fecha_descarga FROM {TABLA_DESCARGAS} WHERE aseguradora={m} AND ips_nombre={m} AND factura IN ({placeholders})",
                         [aseguradora, ips_nombre] + [str(f) for f in facturas])
             return _filtrar_por_mismo_mes(cur.fetchall())
         finally:
@@ -226,7 +236,7 @@ def buscar_ya_descargadas_por_nit(aseguradora, ips_nit, facturas):
         conn = _conectar()
         try:
             cur = conn.cursor(); m = _marcador(); placeholders = ",".join([m] * len(facturas))
-            cur.execute(f"SELECT factura,fecha_descarga FROM descargas WHERE aseguradora={m} AND ips_nit={m} AND factura IN ({placeholders})",
+            cur.execute(f"SELECT factura,fecha_descarga FROM {TABLA_DESCARGAS} WHERE aseguradora={m} AND ips_nit={m} AND factura IN ({placeholders})",
                         [aseguradora, ips_nit] + [str(f) for f in facturas])
             return _filtrar_por_mismo_mes(cur.fetchall())
         finally:
@@ -349,7 +359,7 @@ def contar_historial(aseguradora=None, ips_nombre=None):
     with _lock:
         conn = _conectar()
         try:
-            cur = conn.cursor(); m = _marcador(); query = "SELECT COUNT(*) FROM descargas WHERE 1=1"; params = []
+            cur = conn.cursor(); m = _marcador(); query = f"SELECT COUNT(*) FROM {TABLA_DESCARGAS} WHERE 1=1"; params = []
             if aseguradora: query += f" AND aseguradora={m}"; params.append(aseguradora)
             if ips_nombre: query += f" AND ips_nombre={m}"; params.append(ips_nombre)
             cur.execute(query, params); return cur.fetchone()[0]
