@@ -101,8 +101,12 @@ def inicializar():
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_descargas_anio_mes ON descargas(anio_descarga, mes_descarga)")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_descargas_ips ON descargas(ips_id)")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_descargas_factura ON descargas(aseguradora, factura)")
-                cur.execute("""CREATE OR REPLACE VIEW descargas_detalladas AS
-                    SELECT ROW_NUMBER() OVER (ORDER BY d.fecha_migrado, d.id) AS correlativo,
+                # El nombre de la vista cambió de "descargas_detalladas" a
+                # "v_descargas" -- si la vieja existe (de una versión
+                # anterior), se elimina para no dejar 2 vistas duplicadas.
+                cur.execute("DROP VIEW IF EXISTS descargas_detalladas")
+                cur.execute("""CREATE OR REPLACE VIEW v_descargas AS
+                    SELECT ROW_NUMBER() OVER (ORDER BY d.fecha_migrado, d.id) AS consecutivo,
                         d.id, d.aseguradora, i.nombre_estandar AS ips_nombre, i.nit AS ips_nit,
                         i.responsable, d.factura, d.siniestro, d.periodo, d.identidad,
                         d.fecha_descarga, d.anio_descarga, d.mes_descarga, d.dia_descarga, d.sede
@@ -219,6 +223,12 @@ def registrar_ips(ips):
 def registrar_descargas(aseguradora, ips_nombre, periodo, identidad, items, ips=None, sede=None):
     if not items:
         return 0
+    # En vez de dejar estas columnas en NULL cuando el bot no maneja ese
+    # concepto (Estado/Sura no tiene "periodo"; solo Campbell en
+    # Estado/Sura maneja "sede"), se deja un valor explícito y honesto --
+    # más claro para consultar que un NULL sin contexto.
+    periodo = periodo or "No aplica"
+    sede = sede or "No aplica"
     ahora = datetime.now(timezone.utc).isoformat()
     ips = ips or _resolver_ips(nombre=ips_nombre)
     ips_id = registrar_ips(ips)

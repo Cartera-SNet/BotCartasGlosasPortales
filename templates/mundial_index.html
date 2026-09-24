@@ -258,6 +258,12 @@
               <div class="path-display" id="pathDisplay">📂 Se usará: downloads/[lote]/[IPS]/</div>
               <div class="hint"><i class="fas fa-info-circle"></i><span>La subcarpeta se nombra automáticamente según el NIT del usuario (la IPS).</span></div>
             </div>
+            <div style="display:none; align-items:center; gap:8px;">
+              <input type="checkbox" id="silencioso" style="width:16px; height:16px; margin:0;">
+              <label for="silencioso" style="margin:0; cursor:pointer; font-weight:normal; font-size:0.8rem;">
+                Modo silencioso (sin ventana del navegador)
+              </label>
+            </div>
           </div>
         </div>
 
@@ -274,7 +280,12 @@
               <i class="fas fa-upload"></i> Cargar lista
             </button>
           </div>
-          <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
+          <div id="uploadStatusRow" style="display:flex; align-items:center; gap:8px; margin-top:5px; min-height:18px;">
+          <div id="uploadStatus" style="font-size:0.65rem; flex:1;"></div>
+          <button type="button" id="btnClearLista" title="Quitar lista cargada" style="display:none; border:none; background:#fee2e2; color:#ef4444; width:22px; height:22px; border-radius:6px; cursor:pointer; font-size:0.7rem; line-height:1; padding:0; flex-shrink:0;">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
           <div class="chips" id="resumenChips"></div>
         </div>
 
@@ -601,9 +612,13 @@ document.getElementById('btnUpload').addEventListener('click', async () => {
     statusDiv.innerHTML = `<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ${data.count} consecutivos cargados.</span>`;
     chips.innerHTML = Object.entries(data.resumen || {})
       .map(([k,v]) => `<span class="chip">${k}: ${v}</span>`).join('');
+    const btnClr = document.getElementById("btnClearLista");
+    if (btnClr) btnClr.style.display = "inline-flex";
   } else {
     statusDiv.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
     chips.innerHTML = '';
+    const btnClr2 = document.getElementById("btnClearLista");
+    if (btnClr2) btnClr2.style.display = "none";
   }
 });
 
@@ -645,7 +660,7 @@ async function startJob() {
   let resp = await fetch('/mundial/api/start', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual })
+    body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, silencioso: document.getElementById('silencioso').checked })
   });
   let data = await resp.json();
 
@@ -659,7 +674,7 @@ async function startJob() {
     resp = await fetch('/mundial/api/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, ips_nit_manual: nitElegido })
+      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, ips_nit_manual: nitElegido, silencioso: document.getElementById('silencioso').checked })
     });
     data = await resp.json();
   }
@@ -674,7 +689,7 @@ async function startJob() {
     resp = await fetch('/mundial/api/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, confirmar_duplicados: true, decision_redescarga: decision.decision, facturas_redescarga: decision.selected })
+      body: JSON.stringify({ usuario, password, lote, valores, identidad: identidadActual, confirmar_duplicados: true, decision_redescarga: decision.decision, facturas_redescarga: decision.selected, silencioso: document.getElementById('silencioso').checked })
     });
     data = await resp.json();
   }
@@ -1055,6 +1070,27 @@ function descargarCruceExcel() {
 // ── Init ───────────────────────────────────────────────────────────────────
 updatePathDisplay();
 refreshFiles();
+
+// ── Limpiar lista cargada ───────────────────────────────────────────────────
+async function clearListaCargada() {
+  const statusDiv = document.getElementById("uploadStatus");
+  const fileInput = document.getElementById("uploadFile");
+  const nameDiv = document.getElementById("uploadFileName");
+  const btnClr = document.getElementById("btnClearLista");
+  const valores = document.getElementById("valores");
+  const chips = document.getElementById("resumenChips");
+  if (fileInput) fileInput.value = "";
+  if (nameDiv) nameDiv.textContent = "";
+  if (statusDiv) statusDiv.innerHTML = "";
+  if (btnClr) btnClr.style.display = "none";
+  if (valores) valores.value = "";
+  if (chips) chips.innerHTML = "";
+  if (typeof cargados !== "undefined") cargados = [];
+}
+(function() {
+  const btn = document.getElementById("btnClearLista");
+  if (btn) btn.addEventListener("click", clearListaCargada);
+})();
 </script>
 </body>
 </html>

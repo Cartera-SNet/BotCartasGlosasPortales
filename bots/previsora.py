@@ -1165,7 +1165,7 @@ def _download_factura(job, page, context, modal_frame, fac: dict, dl_dir: Path, 
 #  no se modifica nada más. Para ahorrar espacio, se incluye tal cual estaba,
 #  pero asegurando que la función _extraer_nombre_ips es la nueva.)
 
-def run_automation(job, usuario: str, password: str, periodo: str, download_path: str, reintentos_largos: bool = True):
+def run_automation(job, usuario: str, password: str, periodo: str, download_path: str, reintentos_largos: bool = True, headless: bool = True):
     from playwright.sync_api import sync_playwright
 
     dl_dir = Path(download_path)
@@ -1178,7 +1178,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            browser = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"] if headless else [])
             context = browser.new_context(accept_downloads=True, viewport={"width": 1500, "height": 900})
             page = context.new_page()
             job["browser"] = browser
@@ -1263,14 +1263,43 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
 
             log(job, "📂 Navegando a módulo BI IPS...")
 
+            def _variantes_periodo(per):
+                """Genera variantes de texto para localizar el período en el portal."""
+                per = (per or "").strip()
+                low = per.lower()
+                mes = low[:3] if len(low) >= 3 else low
+                yy = low[3:] if len(low) >= 5 else ""
+                year_full = ("20" + yy) if len(yy) == 2 else yy
+                cands = [
+                    low, per, per.upper(), mes.upper() + yy,
+                    f"{mes}-{yy}", f"{mes}.{yy}", f"{mes}/{yy}", f"{mes} {yy}",
+                    f"{mes}{year_full}", f"{mes}-{year_full}", f"{mes}/{year_full}", f"{mes} {year_full}",
+                ]
+                # únicos, no vacíos
+                out, seen = [], set()
+                for c in cands:
+                    c = c.strip()
+                    if c and c not in seen:
+                        seen.add(c)
+                        out.append(c)
+                return out
+
             def _find_periodo_in_frames():
+                variantes = _variantes_periodo(periodo)
+                # JSON-safe list for JS
+                import json as _json
+                variantes_js = _json.dumps(variantes)
                 js_check = f"""
                     () => {{
                         const bodyText = (document.body?.innerText || '').toLowerCase();
-                        const periodo = '{periodo}'.toLowerCase();
-                        if (bodyText.includes(periodo)) return true;
-                        const variaciones = ['abr26', 'abr-26', 'abr.26', 'abr/26', 'abr2026'];
-                        return variaciones.some(v => bodyText.includes(v));
+                        const variantes = {variantes_js}.map(v => String(v).toLowerCase());
+                        if (variantes.some(v => v && bodyText.includes(v))) return true;
+                        // También buscar en celdas de tabla (más preciso)
+                        for (const cell of document.querySelectorAll('td, th, span, div')) {{
+                            const t = (cell.textContent || '').trim().toLowerCase();
+                            if (variantes.some(v => v && t === v)) return true;
+                        }}
+                        return false;
                     }}
                 """
                 for fr in page.frames:
@@ -1281,36 +1310,39 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                         continue
                 return None
 
+            def _abrir_bi_ips():
+                clicked = False
+                for intento in range(3):
+                    try:
+                        page.locator("text=BI IPS").first.click(timeout=15000)
+                        clicked = True
+                        log(job, "  ✓ Click directo en 'BI IPS' OK.")
+                        break
+                    except:
+                        pass
+                    try:
+                        page.click("text=Inteligencia de Negocio", timeout=8000)
+                        time.sleep(1)
+                        page.click("text=BI IPS", timeout=8000)
+                        clicked = True
+                        log(job, "  ✓ Click vía 'Inteligencia de Negocio' + 'BI IPS' OK.")
+                        break
+                    except:
+                        pass
+                    try:
+                        page.click("[class*='menu-toggle'], [class*='hamburger'], .sidebar-toggle", timeout=5000)
+                        time.sleep(2)
+                        page.click("text=BI IPS", timeout=8000)
+                        clicked = True
+                        log(job, "  ✓ Click vía hamburguesa + 'BI IPS' OK.")
+                        break
+                    except Exception as e:
+                        log(job, f"    ⚠️ Intento {intento+1} falló: {e}", "warn")
+                        time.sleep(2)
+                return clicked
+
             if job["state"].get("stopping"): return
-            clicked = False
-            for intento in range(3):
-                try:
-                    page.locator("text=BI IPS").first.click(timeout=15000)
-                    clicked = True
-                    log(job, "  ✓ Click directo en 'BI IPS' OK.")
-                    break
-                except:
-                    pass
-                try:
-                    page.click("text=Inteligencia de Negocio", timeout=8000)
-                    time.sleep(1)
-                    page.click("text=BI IPS", timeout=8000)
-                    clicked = True
-                    log(job, "  ✓ Click vía 'Inteligencia de Negocio' + 'BI IPS' OK.")
-                    break
-                except:
-                    pass
-                try:
-                    page.click("[class*='menu-toggle'], [class*='hamburger'], .sidebar-toggle", timeout=5000)
-                    time.sleep(2)
-                    page.click("text=BI IPS", timeout=8000)
-                    clicked = True
-                    log(job, "  ✓ Click vía hamburguesa + 'BI IPS' OK.")
-                    break
-                except Exception as e:
-                    log(job, f"    ⚠️ Intento {intento+1} falló: {e}", "warn")
-                    time.sleep(2)
-            if not clicked:
+            if not _abrir_bi_ips():
                 raise Exception("No se encontró el módulo BI IPS en el menú.")
 
             try:
@@ -1319,16 +1351,62 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                 pass
             _cerrar_popups()
             log(job, "✅ Módulo BI IPS abierto. Buscando período...")
+
+            # Búsqueda del período con reintentos (la opción "reintentos largos"
+            # también cubre fallos de localización del período, no solo facturas).
+            max_intentos_periodo = 4 if reintentos_largos else 2
             target_frame = None
-            for i in range(120):
+            for intento_p in range(1, max_intentos_periodo + 1):
                 if job["state"].get("stopping"): return
-                target_frame = _find_periodo_in_frames()
+                if intento_p > 1:
+                    espera = 15 if not reintentos_largos else (30 if intento_p < max_intentos_periodo else 60)
+                    log(job, f"🔄 Reintento {intento_p}/{max_intentos_periodo} de localizar período '{periodo}' (espera {espera}s, refrescar BI IPS)...", "warn")
+                    for _w in range(espera):
+                        if job["state"].get("stopping"): return
+                        time.sleep(1)
+                    # Re-abrir / refrescar el módulo BI IPS
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
+                    time.sleep(2)
+                    _cerrar_popups()
+                    if not _abrir_bi_ips():
+                        log(job, "⚠️ No se pudo reabrir BI IPS en este intento.", "warn")
+                        continue
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=8000)
+                    except Exception:
+                        pass
+                    _cerrar_popups()
+                    log(job, f"✅ Módulo BI IPS reabierto. Buscando período (intento {intento_p})...")
+
+                # Esperar hasta 60s por intento
+                for i in range(120):
+                    if job["state"].get("stopping"): return
+                    target_frame = _find_periodo_in_frames()
+                    if target_frame:
+                        log(job, f"✅ Período '{periodo}' detectado tras {(i+1)*0.5:.1f}s (intento {intento_p}/{max_intentos_periodo}).")
+                        break
+                    # Cada ~10s, intentar un scroll suave por si el período está abajo
+                    if i > 0 and i % 20 == 0:
+                        try:
+                            for fr in page.frames:
+                                try:
+                                    fr.evaluate("() => window.scrollBy(0, 400)")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                    time.sleep(0.5)
                 if target_frame:
-                    log(job, f"✅ Período '{periodo}' detectado tras {(i+1)*0.5:.1f}s.")
                     break
-                time.sleep(0.5)
+
             if not target_frame:
-                raise Exception(f"No se pudo localizar el período '{periodo}' tras 60s.")
+                raise Exception(
+                    f"No se pudo localizar el período '{periodo}' tras {max_intentos_periodo} intento(s) "
+                    f"(~{max_intentos_periodo * 60}s de búsqueda). Verifica que el período exista en Activa IT para esta IPS."
+                )
 
             log(job, "🏥 Obteniendo nombre de la IPS...")
             # Intentar extraer NIT del nombre de usuario (ej: PREV900600550 → 900600550)
@@ -1485,18 +1563,40 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
             ips_dir = dl_dir / ips_nombre_actual
             completadas = cargar_progreso(job, ips_dir)
 
+            # 1) PRIORIDAD ABSOLUTA de la lista cargada (Excel/manual).
+            #    Si hay facturas_permitidas, el período SOLO indica DÓNDE buscar;
+            #    NUNCA se procesan ni se consultan en historial facturas fuera de esa lista.
+            with job["lock"]:
+                permitidas = job["state"].get("facturas_permitidas")
+            if permitidas is not None:
+                def _dig(x):
+                    return re.sub(r"\D", "", str(x or ""))
+                permitidas_set = {_dig(x) for x in permitidas if _dig(x)}
+                antes = len(facturas_objetivo)
+                facturas_objetivo = [fac for fac in facturas_objetivo if _dig(fac.get("num", "")) in permitidas_set]
+                log(job, f"📋 Lista cargada reina: {len(facturas_objetivo)} de {antes} del portal coinciden con las {len(permitidas_set)} pedidas.")
+                if not facturas_objetivo and permitidas_set:
+                    log(job, f"⚠️ Ninguna de las {len(permitidas_set)} facturas de la lista aparece en el período '{periodo}' del portal.", "warn")
+
+            # 2) Historial: solo sobre lo que el usuario realmente pidió (o todo el período si no hay filtro).
             try:
                 _ips_actual = job["state"].get("ips_identity") or {}
-                if _ips_actual.get("nit"):
-                    ya_en_historial = historial_db.buscar_ya_descargadas_por_nit(
-                        "Previsora", _ips_actual["nit"], [fac['num'] for fac in facturas_objetivo]
-                    )
+                nums_objetivo = [str(fac["num"]) for fac in facturas_objetivo]
+                if nums_objetivo:
+                    if _ips_actual.get("nit"):
+                        ya_en_historial = historial_db.buscar_ya_descargadas_por_nit(
+                            "Previsora", _ips_actual["nit"], nums_objetivo
+                        )
+                    else:
+                        ya_en_historial = historial_db.buscar_ya_descargadas(
+                            "Previsora", ips_nombre_actual, nums_objetivo
+                        )
                 else:
-                    ya_en_historial = historial_db.buscar_ya_descargadas(
-                        "Previsora", ips_nombre_actual, [fac['num'] for fac in facturas_objetivo]
-                    )
-                nuevas_en_historial = {f: v for f, v in ya_en_historial.items() if f not in completadas}
-                if nuevas_en_historial:
+                    ya_en_historial = {}
+                nuevas_en_historial = {f: v for f, v in ya_en_historial.items() if f not in completadas and str(f) not in {str(c) for c in completadas}}
+                decision_previa = job["state"].get("decision_redescarga")
+                if nuevas_en_historial and not decision_previa:
+                    # Solo pedir decisión si aún no se resolvió en el arranque
                     with job["lock"]:
                         job["state"]["duplicados_pendientes"] = {"ya_descargadas": nuevas_en_historial}
                         job["state"]["duplicate_event"].clear()
@@ -1504,20 +1604,29 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                         if job["state"].get("stopping"):
                             return
                     decision = job["state"].get("decision_redescarga") or "ninguna"
-                    seleccionadas = set(job["state"].get("facturas_redescarga") or [])
+                    seleccionadas = set(str(x) for x in (job["state"].get("facturas_redescarga") or []))
                     if decision == "ninguna":
-                        facturas_objetivo = [f for f in facturas_objetivo if f["num"] not in nuevas_en_historial]
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial]
                     elif decision == "seleccionadas":
-                        facturas_objetivo = [f for f in facturas_objetivo if f["num"] not in nuevas_en_historial or f["num"] in seleccionadas]
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial or str(f["num"]) in seleccionadas]
                     with job["lock"]:
                         job["state"]["duplicados_pendientes"] = None
-            except Exception:
-                pass
+                elif nuevas_en_historial and decision_previa:
+                    # Ya se decidió en el arranque: aplicar sin volver a preguntar
+                    decision = decision_previa
+                    seleccionadas = set(str(x) for x in (job["state"].get("facturas_redescarga") or []))
+                    if decision == "ninguna":
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial]
+                    elif decision == "seleccionadas":
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial or str(f["num"]) in seleccionadas]
+                    log(job, f"📋 Decisión de re-descarga ya tomada en el arranque ({decision}): se omiten {len(nuevas_en_historial)} facturas ya en historial.")
+            except Exception as _e_hist:
+                log(job, f"⚠️ Error al consultar historial de duplicados: {_e_hist}", "warn")
 
-            # Filtrar facturas ya descargadas
+            # 3) Filtrar facturas ya descargadas en esta carpeta (progreso.json)
             facturas_pendientes = []
             for fac in facturas_objetivo:
-                if fac['num'] in completadas:
+                if fac['num'] in completadas or str(fac['num']) in {str(c) for c in completadas}:
                     log(job, f"⏭️ Factura {fac['num']} ya descargada en ejecución anterior, omitiendo.")
                     with job["lock"]:
                         job["state"]["stats"]["descargadas"] += 1
@@ -1529,22 +1638,6 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                         })
                 else:
                     facturas_pendientes.append(fac)
-
-            # Aplicar filtro opcional por lista de facturas permitidas.
-            # OJO: None significa "sin filtro, procesar todo lo que traiga
-            # el portal" -- pero una lista vacía [] significa "el filtro
-            # dejó CERO facturas por procesar" (por ejemplo, si el usuario
-            # eligió 'no volver a descargar ninguna' y las 4 que subió ya
-            # estaban todas repetidas). Antes se usaba "if permitidas:",
-            # que en Python trata [] como falso -- así que el filtro se
-            # saltaba entero y terminaba escaneando/descargando TODO el
-            # período, exactamente lo que no debía pasar.
-            with job["lock"]:
-                permitidas = job["state"].get("facturas_permitidas")
-            if permitidas is not None:
-                original_count = len(facturas_pendientes)
-                facturas_pendientes = [fac for fac in facturas_pendientes if fac['num'] in permitidas]
-                log(job, f"📋 Filtro activo: solo {len(facturas_pendientes)} de {original_count} facturas están en la lista permitida.")
 
             log(job, f"📋 Facturas pendientes por procesar en esta ejecución: {len(facturas_pendientes)}")
 
@@ -1693,7 +1786,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                     time.sleep(1)
                 log(job, f"🔄 Reiniciando browser y sesión (intento {intento_num}/{MAX_REINTENTOS})...", "warn")
                 # Reutilizar el playwright (p) ya existente — no crear uno nuevo dentro del hilo
-                browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                browser = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"] if headless else [])
                 context = browser.new_context(accept_downloads=True, viewport={"width": 1500, "height": 900})
                 page = context.new_page()
                 # Login completo
@@ -1930,7 +2023,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
         job["periodo"] = None
         job["ips_nombre"] = None
 
-def run_automation_lote(job, usuario, password, periodos, download_path_base, reintentos_largos: bool = True):
+def run_automation_lote(job, usuario, password, periodos, download_path_base, reintentos_largos: bool = True, headless: bool = True):
     """Ejecuta run_automation secuencialmente para cada período de un rango
     (ej: Dic25-May26 -> primero Dic25 completo, luego Ene26, etc.), en vez de
     intentar buscar un período literal 'Dic25-May26' en el portal."""
@@ -1945,7 +2038,7 @@ def run_automation_lote(job, usuario, password, periodos, download_path_base, re
             log(job, f"📅 Período {idx}/{len(periodos)} del rango: {periodo}")
             log(job, f"{'='*50}")
             dl_path_periodo = str(Path(download_path_base) / periodo)
-            run_automation(job, usuario, password, periodo, dl_path_periodo, reintentos_largos)
+            run_automation(job, usuario, password, periodo, dl_path_periodo, reintentos_largos, headless)
     finally:
         with job["lock"]:
             job["state"]["_lote_activo"] = False
@@ -2010,6 +2103,8 @@ def start_job():
     periodo_input = data.get("periodo", "").strip()
     custom_path = data.get("download_path", "").strip()
     reintentos_largos = str(data.get("reintentos_largos", "true")).lower() not in ("false", "off", "0", "no")
+    silencioso = str(data.get("silencioso", "false")).lower() in ("true", "1", "on", "yes")
+    headless = True  # Railway no tiene pantalla -- siempre headless, sin importar el checkbox (que ni siquiera se muestra aquí)
     identidad = validar_identidad(data.get("identidad"))
     if not identidad:
         return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
@@ -2075,6 +2170,25 @@ def start_job():
             facturas_nuevas = [f for f in facturas_nuevas if f not in repetidas]
         elif decision_redescarga == "seleccionadas":
             facturas_nuevas = [f for f in facturas_nuevas if f not in repetidas or f in facturas_redescarga]
+        # decision "todas" deja facturas_nuevas sin filtrar (redescarga todo)
+
+    # Si no vino lista en el request, reutilizar la cargada con "Cargar lista"
+    if facturas_nuevas is None:
+        with job["lock"]:
+            _prev = job["state"].get("facturas_permitidas")
+        if _prev is not None:
+            facturas_nuevas = list(_prev)
+            log(job, f"📄 Usando lista previamente cargada ({len(facturas_nuevas)} facturas) — el período solo indica dónde buscar.")
+
+    # Si el usuario eligió no re-descargar (o solo seleccionadas) y tras el
+    # filtro no queda NINGUNA factura, no arrancar el bot: evita login +
+    # escaneo del período completo solo para concluir que no hay nada que hacer.
+    if facturas_nuevas is not None and len(facturas_nuevas) == 0:
+        return jsonify({
+            "ok": True,
+            "sin_trabajo": True,
+            "message": "No hay facturas pendientes por descargar con la opción elegida. No se inició ningún proceso."
+        })
 
     with jobs_registry_lock:
         with job["lock"]:
@@ -2085,6 +2199,7 @@ def start_job():
             if not concurrency.puede_iniciar():
                 return jsonify({"ok": False, "error": "El panel está al máximo de descargas simultáneas entre todas las aseguradoras en este momento. Intenta de nuevo en unos minutos."}), 429
             job["state"]["running"] = True
+            job["state"]["_inicio_ts"] = time.time()
             job["state"]["finished"] = False
             job["state"]["error"] = None
             job["state"]["stats"] = {"total": 0, "descargadas": 0, "errores": 0}
@@ -2092,9 +2207,21 @@ def start_job():
             job["state"]["descargas_exitosas"] = []
             job["state"]["errores_excel_url"] = None
             job["state"]["zip_url"] = None
-            job["state"]["facturas_permitidas"] = None
+            # Si no llegó archivo/manual en ESTE request pero había lista cargada
+            # previamente vía /api/upload, conservar esa lista (el período solo
+            # indica dónde buscar). Para "todo el período" el usuario debe
+            # limpiar la lista con la X del panel.
+            prev_permitidas = job["state"].get("facturas_permitidas")
+            job["state"]["decision_redescarga"] = decision_redescarga or None
+            job["state"]["facturas_redescarga"] = list(facturas_redescarga) if facturas_redescarga else []
+            job["state"]["duplicados_pendientes"] = None
             if facturas_nuevas is not None:
-                job["state"]["facturas_permitidas"] = facturas_nuevas
+                job["state"]["facturas_permitidas"] = [re.sub(r"\D", "", str(f)) for f in facturas_nuevas if re.sub(r"\D", "", str(f))]
+            elif prev_permitidas is not None:
+                job["state"]["facturas_permitidas"] = [re.sub(r"\D", "", str(f)) for f in prev_permitidas if re.sub(r"\D", "", str(f))]
+                log(job, f"📄 Reutilizando lista cargada previamente: {len(job['state']['facturas_permitidas'])} facturas.")
+            else:
+                job["state"]["facturas_permitidas"] = None
 
     if facturas_nuevas is not None:
         log(job, f"📄 Filtro de {len(facturas_nuevas)} facturas aplicado junto con el arranque.")
@@ -2116,10 +2243,10 @@ def start_job():
     if len(periodos) > 1:
         log(job, f"📅 Procesando rango de {len(periodos)} períodos: {periodos[0]} → {periodos[-1]}")
         job["state"]["periodos_rango"] = periodos
-        t = threading.Thread(target=run_automation_lote, args=(job, usuario, password, periodos, dl_path, reintentos_largos), daemon=True)
+        t = threading.Thread(target=run_automation_lote, args=(job, usuario, password, periodos, dl_path, reintentos_largos, headless), daemon=True)
     else:
         job["state"]["periodos_rango"] = None
-        t = threading.Thread(target=run_automation, args=(job, usuario, password, periodos[0], dl_path, reintentos_largos), daemon=True)
+        t = threading.Thread(target=run_automation, args=(job, usuario, password, periodos[0], dl_path, reintentos_largos, headless), daemon=True)
     t.start()
     return jsonify({"ok": True, "download_path": dl_path, "periodos_detectados": periodos, "empresa_id": empresa_id})
 
@@ -2266,17 +2393,26 @@ def delete_all_files():
         return jsonify({"ok": True, "message": "No hay archivos que eliminar"})
     try:
         eliminados = 0
-        for item in list(folder.iterdir()):
-            if item.is_file() and item.name != "progreso.json":
+        # Borrar TODOS los archivos (PDF, ZIP, Excel, etc.) bajo la carpeta,
+        # conservando únicamente progreso.json.
+        for item in list(folder.rglob("*")):
+            if not item.is_file():
+                continue
+            if item.name == "progreso.json":
+                continue
+            try:
                 item.unlink()
                 eliminados += 1
-            elif item.is_dir():
-                # Dentro de subcarpetas: borrar archivos pero conservar progreso.json
-                for sub in list(item.iterdir()):
-                    if sub.is_file() and sub.name != "progreso.json":
-                        sub.unlink()
-                        eliminados += 1
-                # Si la subcarpeta quedó vacía (o solo tiene progreso), dejarla
+            except Exception:
+                pass
+        # Limpiar carpetas vacías (excepto la raíz del período)
+        for item in sorted(folder.rglob("*"), key=lambda x: len(x.parts), reverse=True):
+            if item.is_dir():
+                try:
+                    if not any(item.iterdir()):
+                        item.rmdir()
+                except Exception:
+                    pass
         log(None, f"🗑️ Soportes eliminados: {eliminados} archivo(s) en '{folder}' (progreso conservado)")
         return jsonify({"ok": True, "message": f"Se eliminaron {eliminados} soporte(s). El progreso se conservó.", "eliminados": eliminados})
     except Exception as e:
@@ -2355,6 +2491,19 @@ def upload_facturas():
         return jsonify({"ok": True, "count": len(facturas_limpias), "facturas": facturas_limpias[:10]})
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error al procesar archivo: {str(e)}"}), 500
+
+@bp.route("/api/upload/clear", methods=["POST"])
+def clear_facturas_cargadas():
+    """Quita la lista de facturas cargada (Excel/manual) para esta empresa."""
+    empresa_id = resolve_empresa_id(
+        (request.get_json(silent=True) or {}).get("usuario", "")
+        if request.is_json else request.form.get("usuario", "")
+    )
+    job = get_or_create_job(empresa_id)
+    with job["lock"]:
+        job["state"]["facturas_permitidas"] = None
+    return jsonify({"ok": True, "message": "Lista de facturas limpiada."})
+
 
 @bp.route("/api/progreso")
 def get_progreso():

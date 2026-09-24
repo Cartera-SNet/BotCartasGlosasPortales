@@ -796,7 +796,7 @@ def _agregar_carta_sin_tipo(job, page, valor, etiqueta=""):
     return detectar_tipo_solicitud(valor)
 
 # ==================== AUTOMATIZACIÓN PRINCIPAL ====================
-def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_path, login_timeout):
+def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_path, login_timeout, headless=True):
     from playwright.sync_api import sync_playwright
 
     dl_dir = Path(download_path)
@@ -824,7 +824,7 @@ def run_automation(job, usuario, password, tipo_acceso, lote, valores, download_
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage"])
+            browser = p.chromium.launch(headless=headless, args=["--no-sandbox","--disable-dev-shm-usage"] if headless else [])
             context = browser.new_context(accept_downloads=True, viewport={"width": 1500, "height": 900})
             page = context.new_page()
             job["browser"] = browser
@@ -1300,7 +1300,7 @@ def parse_valores(texto):
 # ==================== REINTENTOS AUTOMÁTICOS ====================
 MAX_CICLOS_REINTENTO = 5  # máximo de veces que el bot se relanza solo
 
-def run_automation_con_reintentos(job, usuario, password, tipo_acceso, lote, valores, dl_path, login_timeout):
+def run_automation_con_reintentos(job, usuario, password, tipo_acceso, lote, valores, dl_path, login_timeout, headless=True):
     """Envuelve run_automation con lógica de reintento automático.
     Si al terminar quedan errores, vuelve a lanzar el bot SOLO con las
     cartas que fallaron, hasta MAX_CICLOS_REINTENTO veces en total.
@@ -1328,7 +1328,7 @@ def run_automation_con_reintentos(job, usuario, password, tipo_acceso, lote, val
                 job["state"]["errores_detalle"] = []
 
         # Ejecutar el bot con la lista actual
-        run_automation(job, usuario, password, tipo_acceso, lote, valores_actuales, dl_path, login_timeout)
+        run_automation(job, usuario, password, tipo_acceso, lote, valores_actuales, dl_path, login_timeout, headless)
 
         if job["state"].get("stopping"):
             break
@@ -1375,6 +1375,8 @@ def start_job():
     valores_texto = data.get("valores", "").strip()
     custom_path = data.get("download_path", "").strip()
     login_timeout = int(data.get("login_timeout", 180) or 180)
+    silencioso = str(data.get("silencioso", "false")).lower() in ("true", "1", "on", "yes")
+    headless = True  # Railway no tiene pantalla -- siempre headless, sin importar el checkbox (que ni siquiera se muestra aquí)
     identidad = validar_identidad(data.get("identidad"))
     if not identidad:
         return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
@@ -1418,6 +1420,14 @@ def start_job():
         elif decision_redescarga == "seleccionadas":
             valores = [v for v in valores if v not in ya_descargadas or v in facturas_redescarga]
 
+    # Si el filtro de re-descarga dejó 0 facturas, no arrancar.
+    if decision_redescarga in ("ninguna", "seleccionadas") and not valores:
+        return jsonify({
+            "ok": True,
+            "sin_trabajo": True,
+            "message": "No hay facturas pendientes por descargar con la opción elegida. No se inició ningún proceso."
+        })
+
     with jobs_registry_lock:
         with job["lock"]:
             if job["state"]["running"]:
@@ -1427,6 +1437,7 @@ def start_job():
             if not concurrency.puede_iniciar():
                 return jsonify({"ok": False, "error": "El panel está al máximo de descargas simultáneas entre todas las aseguradoras en este momento. Intenta de nuevo en unos minutos."}), 429
             job["state"]["running"] = True
+            job["state"]["_inicio_ts"] = time.time()
             job["state"]["finished"] = False
             job["state"]["error"] = None
             job["state"]["stats"] = {"total": len(valores), "descargadas": 0, "errores": 0}
@@ -1453,7 +1464,7 @@ def start_job():
     concurrency.registrar_inicio("mundial")
     t = threading.Thread(
         target=run_automation_con_reintentos,
-        args=(job, usuario, password, tipo_acceso, lote_safe, valores, dl_path, login_timeout),
+        args=(job, usuario, password, tipo_acceso, lote_safe, valores, dl_path, login_timeout, headless),
         daemon=True,
     )
     t.start()

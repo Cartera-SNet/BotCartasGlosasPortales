@@ -1163,7 +1163,7 @@ def _avanzar_pagina(page):
         return False
 
 # ==================== AUTOMATIZACIÓN PRINCIPAL ====================
-def run_automation(job, usuario: str, password: str, periodo: str, download_path: str, reintentos_largos: bool = True):
+def run_automation(job, usuario: str, password: str, periodo: str, download_path: str, reintentos_largos: bool = True, headless: bool = True):
     from playwright.sync_api import sync_playwright
 
     dl_dir = Path(download_path)
@@ -1175,7 +1175,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])  # Railway
+            browser = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"] if headless else [])  # Railway
             context = browser.new_context(accept_downloads=True, viewport={"width": 1500, "height": 900})
             page = context.new_page()
             job["browser"] = browser
@@ -1498,18 +1498,37 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
             ips_dir = dl_dir / ips_nombre_actual
             completadas = cargar_progreso(job, ips_dir)
 
+            # PRIORIDAD ABSOLUTA de la lista cargada. El período solo indica dónde buscar.
+            with job["lock"]:
+                permitidas = job["state"].get("facturas_permitidas")
+            if permitidas is not None:
+                def _dig(x):
+                    return re.sub(r"\D", "", str(x or ""))
+                permitidas_set = {_dig(x) for x in permitidas if _dig(x)}
+                antes = len(facturas_objetivo)
+                facturas_objetivo = [fac for fac in facturas_objetivo if _dig(fac.get("num", "")) in permitidas_set]
+                log(job, f"📋 Lista cargada reina: {len(facturas_objetivo)} de {antes} del portal coinciden con las {len(permitidas_set)} pedidas.")
+                if not facturas_objetivo and permitidas_set:
+                    log(job, f"⚠️ Ninguna de las {len(permitidas_set)} facturas de la lista aparece en el período '{periodo}' del portal.", "warn")
+
             try:
                 _ips_actual = job["state"].get("ips_identity") or {}
-                if _ips_actual.get("nit"):
-                    ya_en_historial = historial_db.buscar_ya_descargadas_por_nit(
-                        "Bolívar", _ips_actual["nit"], [fac['num'] for fac in facturas_objetivo]
-                    )
+                nums_objetivo = [str(fac["num"]) for fac in facturas_objetivo]
+                if nums_objetivo:
+                    if _ips_actual.get("nit"):
+                        ya_en_historial = historial_db.buscar_ya_descargadas_por_nit(
+                            "Bolívar", _ips_actual["nit"], nums_objetivo
+                        )
+                    else:
+                        ya_en_historial = historial_db.buscar_ya_descargadas(
+                            "Bolívar", ips_nombre_actual, nums_objetivo
+                        )
                 else:
-                    ya_en_historial = historial_db.buscar_ya_descargadas(
-                        "Bolívar", ips_nombre_actual, [fac['num'] for fac in facturas_objetivo]
-                    )
-                nuevas_en_historial = {f: v for f, v in ya_en_historial.items() if f not in completadas}
-                if nuevas_en_historial:
+                    ya_en_historial = {}
+                completadas_str = {str(c) for c in completadas}
+                nuevas_en_historial = {f: v for f, v in ya_en_historial.items() if str(f) not in completadas_str}
+                decision_previa = job["state"].get("decision_redescarga")
+                if nuevas_en_historial and not decision_previa:
                     with job["lock"]:
                         job["state"]["duplicados_pendientes"] = {"ya_descargadas": nuevas_en_historial}
                         job["state"]["duplicate_event"].clear()
@@ -1517,19 +1536,28 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                         if job["state"].get("stopping"):
                             return
                     decision = job["state"].get("decision_redescarga") or "ninguna"
-                    seleccionadas = set(job["state"].get("facturas_redescarga") or [])
+                    seleccionadas = set(str(x) for x in (job["state"].get("facturas_redescarga") or []))
                     if decision == "ninguna":
-                        facturas_objetivo = [f for f in facturas_objetivo if f["num"] not in nuevas_en_historial]
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial]
                     elif decision == "seleccionadas":
-                        facturas_objetivo = [f for f in facturas_objetivo if f["num"] not in nuevas_en_historial or f["num"] in seleccionadas]
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial or str(f["num"]) in seleccionadas]
                     with job["lock"]:
                         job["state"]["duplicados_pendientes"] = None
-            except Exception:
-                pass
+                elif nuevas_en_historial and decision_previa:
+                    decision = decision_previa
+                    seleccionadas = set(str(x) for x in (job["state"].get("facturas_redescarga") or []))
+                    if decision == "ninguna":
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial]
+                    elif decision == "seleccionadas":
+                        facturas_objetivo = [f for f in facturas_objetivo if str(f["num"]) not in nuevas_en_historial or str(f["num"]) in seleccionadas]
+                    log(job, f"📋 Decisión de re-descarga ya tomada en el arranque ({decision}).")
+            except Exception as _e_hist:
+                log(job, f"⚠️ Error al consultar historial de duplicados: {_e_hist}", "warn")
 
             facturas_pendientes = []
+            completadas_str = {str(c) for c in completadas}
             for fac in facturas_objetivo:
-                if fac['num'] in completadas:
+                if fac['num'] in completadas or str(fac['num']) in completadas_str:
                     log(job, f"⏭️ Factura {fac['num']} ya descargada, omitiendo.")
                     with job["lock"]:
                         job["state"]["stats"]["descargadas"] += 1
@@ -1541,13 +1569,6 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                         })
                 else:
                     facturas_pendientes.append(fac)
-
-            with job["lock"]:
-                permitidas = job["state"].get("facturas_permitidas")
-            if permitidas is not None:
-                original_count = len(facturas_pendientes)
-                facturas_pendientes = [fac for fac in facturas_pendientes if fac['num'] in permitidas]
-                log(job, f"📋 Filtro activo: {len(facturas_pendientes)} de {original_count} facturas permitidas.")
 
             log(job, f"📋 Facturas pendientes: {len(facturas_pendientes)}")
             with job["lock"]:
@@ -1691,7 +1712,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
                     time.sleep(1)
                 log(job, f"🔄 Reiniciando browser y sesión (intento {intento_num}/{MAX_REINTENTOS})...", "warn")
                 # Reutilizar el playwright (p) ya existente — no crear uno nuevo dentro del hilo
-                browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                browser = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"] if headless else [])
                 context = browser.new_context(accept_downloads=True, viewport={"width": 1500, "height": 900})
                 page = context.new_page()
                 # Login completo
@@ -1922,7 +1943,7 @@ def run_automation(job, usuario: str, password: str, periodo: str, download_path
         job["periodo"] = None
         job["ips_nombre"] = None
 
-def run_automation_lote(job, usuario, password, periodos, download_path_base, reintentos_largos: bool = True):
+def run_automation_lote(job, usuario, password, periodos, download_path_base, reintentos_largos: bool = True, headless: bool = True):
     """Ejecuta run_automation secuencialmente para cada período de un rango
     (ej: May26-Jun26 -> primero May26 completo, luego Jun26), en vez de
     intentar buscar un período literal 'May26-Jun26' en el portal."""
@@ -1937,7 +1958,7 @@ def run_automation_lote(job, usuario, password, periodos, download_path_base, re
             log(job, f"📅 Período {idx}/{len(periodos)} del rango: {periodo}")
             log(job, f"{'='*50}")
             dl_path_periodo = str(Path(download_path_base) / periodo)
-            run_automation(job, usuario, password, periodo, dl_path_periodo, reintentos_largos)
+            run_automation(job, usuario, password, periodo, dl_path_periodo, reintentos_largos, headless)
     finally:
         with job["lock"]:
             job["state"]["_lote_activo"] = False
@@ -1961,6 +1982,11 @@ def start_job():
     periodo_input = data.get("periodo", "").strip()
     custom_path = data.get("download_path", "").strip()
     reintentos_largos = str(data.get("reintentos_largos", "true")).lower() not in ("false", "off", "0", "no")
+    # Local: por defecto se ve el navegador (headless=False), salvo que
+    # se marque "modo silencioso" -- en Railway esto nunca aplica
+    # (siempre headless=True ahí, no hay pantalla en el servidor).
+    silencioso = str(data.get("silencioso", "false")).lower() in ("true", "1", "on", "yes")
+    headless = True  # Railway no tiene pantalla -- siempre headless, sin importar el checkbox (que ni siquiera se muestra aquí)
     identidad = validar_identidad(data.get("identidad"))
     if not identidad:
         return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
@@ -2030,6 +2056,22 @@ def start_job():
                 facturas_nuevas = [f for f in facturas_nuevas if f not in repetidas]
             elif decision_redescarga == "seleccionadas":
                 facturas_nuevas = [f for f in facturas_nuevas if f not in repetidas or f in facturas_redescarga]
+            # decision "todas" deja facturas_nuevas sin filtrar
+
+    if facturas_nuevas is None:
+        with job["lock"]:
+            _prev = job["state"].get("facturas_permitidas")
+        if _prev is not None:
+            facturas_nuevas = list(_prev)
+            log(job, f"📄 Usando lista previamente cargada ({len(facturas_nuevas)} facturas) — el período solo indica dónde buscar.")
+
+    # Si tras filtrar no queda nada, no arrancar el proceso.
+    if facturas_nuevas is not None and len(facturas_nuevas) == 0:
+        return jsonify({
+            "ok": True,
+            "sin_trabajo": True,
+            "message": "No hay facturas pendientes por descargar con la opción elegida. No se inició ningún proceso."
+        })
 
     with jobs_registry_lock:
         with job["lock"]:
@@ -2040,6 +2082,7 @@ def start_job():
             if not concurrency.puede_iniciar():
                 return jsonify({"ok": False, "error": "El panel está al máximo de descargas simultáneas entre todas las aseguradoras en este momento. Intenta de nuevo en unos minutos."}), 429
             job["state"]["running"] = True
+            job["state"]["_inicio_ts"] = time.time()
             job["state"]["finished"] = False
             job["state"]["error"] = None
             job["state"]["stats"] = {"total": 0, "descargadas": 0, "errores": 0}
@@ -2047,9 +2090,17 @@ def start_job():
             job["state"]["descargas_exitosas"] = []
             job["state"]["errores_excel_url"] = None
             job["state"]["zip_url"] = None
-            job["state"]["facturas_permitidas"] = None
+            prev_permitidas = job["state"].get("facturas_permitidas")
+            job["state"]["decision_redescarga"] = decision_redescarga or None
+            job["state"]["facturas_redescarga"] = list(facturas_redescarga) if facturas_redescarga else []
+            job["state"]["duplicados_pendientes"] = None
             if facturas_nuevas is not None:
-                job["state"]["facturas_permitidas"] = facturas_nuevas
+                job["state"]["facturas_permitidas"] = [re.sub(r"\D", "", str(f)) for f in facturas_nuevas if re.sub(r"\D", "", str(f))]
+            elif prev_permitidas is not None:
+                job["state"]["facturas_permitidas"] = [re.sub(r"\D", "", str(f)) for f in prev_permitidas if re.sub(r"\D", "", str(f))]
+                log(job, f"📄 Reutilizando lista cargada previamente: {len(job['state']['facturas_permitidas'])} facturas.")
+            else:
+                job["state"]["facturas_permitidas"] = None
 
     if facturas_nuevas is not None:
         log(job, f"📄 Filtro de {len(facturas_nuevas)} facturas aplicado junto con el arranque.")
@@ -2071,10 +2122,10 @@ def start_job():
     if len(periodos) > 1:
         log(job, f"📅 Procesando rango de {len(periodos)} períodos: {periodos[0]} → {periodos[-1]}")
         job["state"]["periodos_rango"] = periodos
-        t = threading.Thread(target=run_automation_lote, args=(job, usuario, password, periodos, dl_path, reintentos_largos), daemon=True)
+        t = threading.Thread(target=run_automation_lote, args=(job, usuario, password, periodos, dl_path, reintentos_largos, headless), daemon=True)
     else:
         job["state"]["periodos_rango"] = None
-        t = threading.Thread(target=run_automation, args=(job, usuario, password, periodos[0], dl_path, reintentos_largos), daemon=True)
+        t = threading.Thread(target=run_automation, args=(job, usuario, password, periodos[0], dl_path, reintentos_largos, headless), daemon=True)
     t.start()
     return jsonify({"ok": True, "download_path": dl_path, "periodos_detectados": periodos, "empresa_id": empresa_id})
 
@@ -2259,15 +2310,23 @@ def delete_all_files():
         return jsonify({"ok": True, "message": "No hay archivos que eliminar"})
     try:
         eliminados = 0
-        for item in list(folder.iterdir()):
-            if item.is_file() and item.name != "progreso.json":
+        for item in list(folder.rglob("*")):
+            if not item.is_file():
+                continue
+            if item.name == "progreso.json":
+                continue
+            try:
                 item.unlink()
                 eliminados += 1
-            elif item.is_dir():
-                for sub in list(item.iterdir()):
-                    if sub.is_file() and sub.name != "progreso.json":
-                        sub.unlink()
-                        eliminados += 1
+            except Exception:
+                pass
+        for item in sorted(folder.rglob("*"), key=lambda x: len(x.parts), reverse=True):
+            if item.is_dir():
+                try:
+                    if not any(item.iterdir()):
+                        item.rmdir()
+                except Exception:
+                    pass
         log(None, f"🗑️ Soportes eliminados: {eliminados} archivo(s) en '{folder}' (progreso conservado)")
         return jsonify({"ok": True, "message": f"Se eliminaron {eliminados} soporte(s). El progreso se conservó.", "eliminados": eliminados})
     except Exception as e:
@@ -2350,6 +2409,18 @@ def upload_facturas():
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error al procesar archivo: {str(e)}"}), 500
+
+@bp.route("/api/upload/clear", methods=["POST"])
+def clear_facturas_cargadas():
+    empresa_id = resolve_empresa_id(
+        (request.get_json(silent=True) or {}).get("usuario", "")
+        if request.is_json else request.form.get("usuario", "")
+    )
+    job = get_or_create_job(empresa_id)
+    with job["lock"]:
+        job["state"]["facturas_permitidas"] = None
+    return jsonify({"ok": True, "message": "Lista de facturas limpiada."})
+
 
 @bp.route("/api/progreso")
 def get_progreso():

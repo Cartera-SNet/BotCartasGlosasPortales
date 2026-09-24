@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Panel de administrador — Activa IT</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-body: #f4f6fb; --bg-card: #ffffff; --accent: #4f46e5; --accent-hover: #4338ca;
+    --accent-light: #eef2ff; --text-primary: #0f172a; --text-secondary: #64748b;
+    --border: #e5e9f2; --danger: #ef4444; --danger-light: #fef2f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text-primary); display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(circle at 8% 12%, rgba(79,70,229,.07), transparent 42%),
+      radial-gradient(circle at 92% 88%, rgba(79,70,229,.06), transparent 42%),
+      var(--bg-body);
+    padding: 20px;
+  }
+  .wrap { width: min(880px, 100%); display: grid; grid-template-columns: 1.1fr 1fr; border-radius: 20px; overflow: hidden; box-shadow: 0 30px 70px -20px rgba(15,23,42,.18); background: var(--bg-card); }
+  @media (max-width: 760px) { .wrap { grid-template-columns: 1fr; } .side { display: none; } }
+  .side {
+    background: linear-gradient(160deg, var(--accent) 0%, #6d28d9 100%);
+    color: #fff; padding: 40px 34px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;
+  }
+  .side::after { content:""; position:absolute; inset:-40% -20% auto auto; width:260px; height:260px; border-radius:50%; background: rgba(255,255,255,.08); }
+  .side::before { content:""; position:absolute; bottom:-15%; left:-10%; width:220px; height:220px; border-radius:50%; background: rgba(255,255,255,.06); }
+  .side h2 { font-size: 1.35rem; margin: 20px 0 8px; line-height: 1.3; position: relative; }
+  .side p { font-size: .85rem; opacity: .85; line-height: 1.6; margin: 0; position: relative; }
+  .side-logos { display: flex; flex-wrap: wrap; gap: 10px; position: relative; }
+  .side-logos img { width: 34px; height: 34px; object-fit: contain; background: #fff; border-radius: 9px; padding: 5px; }
+  .brand { display: flex; align-items: center; gap: 10px; position: relative; }
+  .brand-badge { width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+  .brand span { font-weight: 800; letter-spacing: .01em; }
+
+  .panel { padding: 46px 40px; display: flex; flex-direction: column; justify-content: center; }
+  .panel h1 { font-size: 1.3rem; margin: 0 0 4px; font-weight: 800; }
+  .panel .subtitle { color: var(--text-secondary); font-size: .84rem; margin: 0 0 28px; display: flex; align-items: center; gap: 6px; }
+  .panel .subtitle i { color: var(--accent); }
+  label { font-size: .74rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; display: block; margin-bottom: 7px; }
+  .field { position: relative; margin-bottom: 18px; }
+  .field i.icon-left { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: .85rem; z-index: 2; pointer-events: none; }
+  .field input { position: relative; z-index: 1; }
+  .field input {
+    width: 100%; padding: 12px 14px 12px 38px; border-radius: 10px; border: 1.5px solid var(--border);
+    font-size: .88rem; font-family: inherit; color: var(--text-primary); transition: border-color .15s, box-shadow .15s;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-light); }
+  .toggle-pass { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-secondary); font-size: .85rem; background: none; border: none; padding: 4px; }
+  .toggle-pass:hover { color: var(--accent); }
+  button.submit {
+    width: 100%; padding: 13px; border: none; border-radius: 10px; margin-top: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: #fff;
+    font-weight: 700; font-size: .88rem; cursor: pointer; transition: transform .12s, opacity .15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  button.submit:hover { transform: translateY(-1px); }
+  button.submit:disabled { opacity: .7; cursor: default; transform: none; }
+  .spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+  .spinner.on { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box {
+    display: none; align-items: center; gap: 8px; background: var(--danger-light); color: var(--danger);
+    border: 1px solid #fecaca; border-radius: 9px; padding: 10px 12px; font-size: .78rem; margin-top: 14px; font-weight: 600;
+  }
+  .footer-note { text-align: center; font-size: .7rem; color: var(--text-secondary); margin-top: 22px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="side">
+      <div class="brand"><div class="brand-badge"><i class="fas fa-shield-halved"></i></div><span>Activa IT</span></div>
+      <div>
+        <h2>Panel de administrador</h2>
+        <p>Supervisa en un solo lugar los procesos de descarga de cartas glosa de las 5 aseguradoras.</p>
+      </div>
+      <div class="side-logos">
+        <img src="/static/logo_bolivar.png" alt="Bolívar">
+        <img src="/static/logo_previsora.png" alt="Previsora">
+        <img src="/static/logo_mundial.png" alt="Mundial">
+        <img src="/static/logo_estado.png" alt="Estado">
+        <img src="/static/logo_sura.png" alt="Sura">
+      </div>
+    </div>
+    <div class="panel">
+      <h1>Acceso restringido</h1>
+      <p class="subtitle"><i class="fas fa-lock"></i> Solo personal autorizado</p>
+      <form id="loginForm">
+        <div class="field">
+          <label for="usuario">Usuario</label>
+          <i class="fas fa-user icon-left"></i>
+          <input type="text" id="usuario" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <i class="fas fa-key icon-left"></i>
+          <input type="password" id="password" autocomplete="current-password" required>
+          <button type="button" class="toggle-pass" id="togglePass"><i class="fas fa-eye"></i></button>
+        </div>
+        <button type="submit" class="submit" id="btnSubmit">
+          <span class="spinner" id="spinner"></span>
+          <span id="btnText">Iniciar sesión</span>
+        </button>
+        <div class="error-box" id="errorBox"><i class="fas fa-triangle-exclamation"></i><span id="errorMsg">Usuario o contraseña incorrectos.</span></div>
+      </form>
+      <div class="footer-note">Panel Bot Glosas · Acceso interno</div>
+    </div>
+  </div>
+<script>
+document.getElementById("togglePass").addEventListener("click", () => {
+  const input = document.getElementById("password");
+  const icon = document.querySelector("#togglePass i");
+  const mostrar = input.type === "password";
+  input.type = mostrar ? "text" : "password";
+  icon.className = mostrar ? "fas fa-eye-slash" : "fas fa-eye";
+});
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const usuario = document.getElementById("usuario").value;
+  const password = document.getElementById("password").value;
+  const btn = document.getElementById("btnSubmit");
+  const spinner = document.getElementById("spinner");
+  const errorBox = document.getElementById("errorBox");
+  errorBox.style.display = "none";
+  btn.disabled = true; spinner.classList.add("on");
+  document.getElementById("btnText").textContent = "Verificando...";
+  try {
+    const r = await fetch("/admin/login", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ usuario, password })
+    });
+    if (r.ok) { location.reload(); return; }
+    document.getElementById("errorMsg").textContent = "Usuario o contraseña incorrectos.";
+    errorBox.style.display = "flex";
+  } catch (e) {
+    document.getElementById("errorMsg").textContent = "No se pudo conectar con el servidor.";
+    errorBox.style.display = "flex";
+  } finally {
+    btn.disabled = false; spinner.classList.remove("on");
+    document.getElementById("btnText").textContent = "Iniciar sesión";
+  }
+});
+</script>
+</body>
+</html>

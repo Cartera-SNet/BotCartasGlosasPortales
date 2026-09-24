@@ -723,7 +723,12 @@
               <i class="fas fa-upload"></i> Cargar lista
             </button>
           </div>
-          <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
+          <div id="uploadStatusRow" style="display:flex; align-items:center; gap:8px; margin-top:5px; min-height:18px;">
+          <div id="uploadStatus" style="font-size:0.65rem; flex:1;"></div>
+          <button type="button" id="btnClearLista" title="Quitar lista cargada" style="display:none; border:none; background:#fee2e2; color:#ef4444; width:22px; height:22px; border-radius:6px; cursor:pointer; font-size:0.7rem; line-height:1; padding:0; flex-shrink:0;">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
         </div>
 
         <div class="form-group identity-panel" id="identidadBox">
@@ -1143,6 +1148,13 @@ async function startJob() {
         document.getElementById("btnStart").disabled = false;
         return;
     }
+    // Opción "no re-descargar" / filtro vacío: no se arrancó ningún proceso
+    if (data.sin_trabajo) {
+        setStatus("idle");
+        document.getElementById("btnStart").disabled = false;
+        addLog({ts: "--:--:--", msg: `ℹ️ ${data.message || "No hay facturas pendientes. No se inició ningún proceso."}`, level: "info"});
+        return;
+    }
     setEmpresaId(data.empresa_id);
 
     const periodoInfo = periodos.length > 1
@@ -1337,6 +1349,8 @@ document.getElementById("btnUpload").addEventListener("click", async () => {
     const statusDiv = document.getElementById("uploadStatus");
     if (data.ok) {
         statusDiv.innerHTML = `<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ${data.count} facturas cargadas.</span>`;
+        const btnClr = document.getElementById("btnClearLista");
+        if (btnClr) btnClr.style.display = "inline-flex";
     } else {
         statusDiv.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
     }
@@ -1480,6 +1494,28 @@ window.onclick = function(event) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 buildPeriodGrid();
 refreshFiles();
+
+// ── Limpiar lista cargada ───────────────────────────────────────────────────
+async function clearListaCargada() {
+  const statusDiv = document.getElementById("uploadStatus");
+  const fileInput = document.getElementById("uploadFile");
+  const nameDiv = document.getElementById("uploadFileName");
+  const btnClr = document.getElementById("btnClearLista");
+  if (fileInput) fileInput.value = "";
+  if (nameDiv) nameDiv.textContent = "";
+  if (statusDiv) statusDiv.innerHTML = "";
+  if (btnClr) btnClr.style.display = "none";
+  try {
+    const fd = new FormData();
+    const u = document.getElementById("usuario");
+    if (u) fd.append("usuario", u.value.trim());
+    await fetch("/previsora/api/upload/clear", { method: "POST", body: fd });
+  } catch (e) {}
+}
+(function() {
+  const btn = document.getElementById("btnClearLista");
+  if (btn) btn.addEventListener("click", clearListaCargada);
+})();
 </script>
 </body>
 </html>

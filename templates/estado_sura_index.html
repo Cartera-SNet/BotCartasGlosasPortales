@@ -184,7 +184,12 @@
               <i class="fas fa-upload"></i> Cargar lista
             </button>
           </div>
-          <div id="uploadStatus" style="font-size:0.65rem; margin-top:5px;"></div>
+          <div id="uploadStatusRow" style="display:flex; align-items:center; gap:8px; margin-top:5px; min-height:18px;">
+          <div id="uploadStatus" style="font-size:0.65rem; flex:1;"></div>
+          <button type="button" id="btnClearLista" title="Quitar lista cargada" style="display:none; border:none; background:#fee2e2; color:#ef4444; width:22px; height:22px; border-radius:6px; cursor:pointer; font-size:0.7rem; line-height:1; padding:0; flex-shrink:0;">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
           <p style="font-size:0.65rem;margin-top:6px;">
             <a href="/plantilla" style="color:var(--accent-blue);">Descargar plantilla vacía</a>
             (columna: Siniestro — ej: 17155/2026*3)
@@ -209,6 +214,13 @@
           <label>Carpeta de descarga (opcional)</label>
           <input type="text" id="downloadPath" class="input-field" placeholder="Dejar vacío para usar por defecto">
           <div class="path-display">📂 Se usará: downloads/{{ empresa }}/[IPS detectada según el NIT]/</div>
+        </div>
+
+        <div class="form-group" style="display:none; align-items:center; gap:8px;">
+          <input type="checkbox" id="silencioso" style="width:16px; height:16px; margin:0;">
+          <label for="silencioso" style="margin:0; cursor:pointer; font-weight:normal; font-size:0.8rem;">
+            Modo silencioso (sin ventana del navegador)
+          </label>
         </div>
 
         <div class="alert info">
@@ -469,6 +481,8 @@ document.getElementById("btnUpload").addEventListener("click", async () => {
   if (data.ok) {
     facturasCargadas = data.count;
     statusDiv.innerHTML = `<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ${data.count} facturas cargadas${data.omitidas ? ` (${data.omitidas} omitidas por formato)` : ""}.</span>`;
+        const btnClr = document.getElementById("btnClearLista");
+        if (btnClr) btnClr.style.display = "inline-flex";
   } else {
     facturasCargadas = 0;
     statusDiv.innerHTML = `<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> ${data.error}</span>`;
@@ -531,6 +545,7 @@ async function enviarInicio(ciudadLogin) {
   formData.append("identidad", identidadActual);
   formData.append("download_path", dlPath);
   if (ciudadLogin) formData.append("ciudad_login", ciudadLogin);
+  formData.append("silencioso", document.getElementById("silencioso").checked ? "true" : "false");
   if (facturasCargadas && file) formData.append("file", file);
   if (manualEntries.length > 0) formData.append("manual_entries", JSON.stringify(manualEntries));
 
@@ -842,6 +857,28 @@ async function initPage() {
   } catch (e) { console.error(e); }
 }
 initPage();
+
+// ── Limpiar lista cargada ───────────────────────────────────────────────────
+async function clearListaCargada() {
+  const statusDiv = document.getElementById("uploadStatus");
+  const fileInput = document.getElementById("uploadFile");
+  const nameDiv = document.getElementById("uploadFileName");
+  const btnClr = document.getElementById("btnClearLista");
+  if (fileInput) fileInput.value = "";
+  if (nameDiv) nameDiv.textContent = "";
+  if (statusDiv) statusDiv.innerHTML = "";
+  if (btnClr) btnClr.style.display = "none";
+  try {
+    const fd = new FormData();
+    const u = document.getElementById("usuario");
+    if (u) fd.append("usuario", u.value.trim());
+    await fetch("/estado_sura/api/upload/clear", { method: "POST", body: fd });
+  } catch (e) {}
+}
+(function() {
+  const btn = document.getElementById("btnClearLista");
+  if (btn) btn.addEventListener("click", clearListaCargada);
+})();
 </script>
 </body>
 </html>

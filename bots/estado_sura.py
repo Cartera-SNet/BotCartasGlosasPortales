@@ -726,7 +726,7 @@ def fill_by_label(job, empresa, page, label_text, value, timeout=8000):
 
 
 def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nombre: str, nit: str,
-                    filas: list, download_path: str, ciudad_seleccionada: str = ""):
+                    filas: list, download_path: str, ciudad_seleccionada: str = "", headless: bool = True):
     from playwright.sync_api import sync_playwright
 
     cfg = EMPRESAS[empresa]
@@ -967,7 +967,7 @@ def run_automation(job: dict, empresa: str, usuario: str, password: str, ips_nom
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])  # Railway: sin pantalla
+            browser = p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"] if headless else [])
             context = browser.new_context(accept_downloads=True, viewport={"width": 1500, "height": 900})
             page = context.new_page()
             job["browser"] = browser
@@ -1249,6 +1249,8 @@ def start_job(empresa):
     manual_json = request.form.get("manual_entries", "").strip()
     identidad = validar_identidad(request.form.get("identidad"))
     ciudad_seleccionada = request.form.get("ciudad_login", "").strip()
+    silencioso = str(request.form.get("silencioso", "false")).lower() in ("true", "1", "on", "yes")
+    headless = True  # Railway no tiene pantalla -- siempre headless, sin importar el checkbox (que ni siquiera se muestra aquí)
 
     if not identidad:
         return jsonify({"ok": False, "error": "Selecciona quién eres antes de iniciar el proceso.", "campo": "identidad"}), 400
@@ -1355,9 +1357,16 @@ def start_job(empresa):
         elif decision_redescarga == "seleccionadas":
             filas = [f for f in filas if f["factura"] not in ya_descargadas or f["factura"] in facturas_redescarga]
 
+    if decision_redescarga in ("ninguna", "seleccionadas") and not filas:
+        return jsonify({
+            "ok": True,
+            "sin_trabajo": True,
+            "message": "No hay facturas pendientes por descargar con la opción elegida. No se inició ningún proceso."
+        })
+
     with job["lock"]:
         job["state"].update({
-            "running": True, "finished": False, "error": None,
+            "running": True, "_inicio_ts": time.time(), "finished": False, "error": None,
             "stats": {"total": 0, "descargadas": 0, "errores": 0},
             "errores_detalle": [], "descargas_exitosas": [],
             "errores_excel_url": None, "zip_url": None,
@@ -1382,7 +1391,7 @@ def start_job(empresa):
     concurrency.registrar_inicio(empresa)
     t = threading.Thread(target=run_automation,
                           args=(job, empresa, usuario, password, ips_nombre, nit, filas, dl_path,
-                                ciudad_seleccionada),
+                                ciudad_seleccionada, headless),
                           daemon=True)
     t.start()
     return jsonify({"ok": True, "ips": ips_nombre, "nit": nit, "empresa_id": empresa_id,

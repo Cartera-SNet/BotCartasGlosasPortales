@@ -25,6 +25,7 @@ import os
 from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", os.environ.get("ADMIN_PASSWORD", "cambia-esta-clave"))
 
 # ---- Registrar cada bot como Blueprint ----
 from bots import estado_sura, bolivar, previsora, mundial
@@ -32,6 +33,8 @@ from bots.estado_sura import bp as estado_sura_bp
 from bots.bolivar import bp as bolivar_bp
 from bots.previsora import bp as previsora_bp
 from bots.mundial import bp as mundial_bp
+from bots.admin import bp as admin_bp
+app.register_blueprint(admin_bp)
 
 app.register_blueprint(estado_sura_bp)
 app.register_blueprint(bolivar_bp)
@@ -109,6 +112,32 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("  🏥 Activa IT — Descargador de Cartas Glosa (panel unificado)")
     print("=" * 60)
+
+    # Prueba REAL de conexión a la base -- no solo "se pudo conectar",
+    # sino una consulta real, para confirmar sin ninguna duda si esta
+    # instancia local está hablando con Neon (con tus 21 IPS reales) o
+    # con una base SQLite local aparte.
+    from bots import historial_db
+    if historial_db._USA_POSTGRES:
+        try:
+            import psycopg2
+            _conn = psycopg2.connect(historial_db.DATABASE_URL)
+            _cur = _conn.cursor()
+            _cur.execute("SELECT COUNT(*) FROM ips")
+            _total_ips = _cur.fetchone()[0]
+            _conn.close()
+            print(f"  ✅ CONECTADO A NEON (Postgres) — {_total_ips} IPS encontradas en el catálogo")
+            print(f"     Host: {historial_db.DATABASE_URL.split('@')[-1].split('/')[0]}")
+        except Exception as e:
+            print(f"  ❌ DATABASE_URL está configurada, pero la conexión a Neon FALLÓ: {e}")
+            print("     Revisa tu cadena de conexión en iniciar.bat.")
+            input("Presiona Enter para salir...")
+            raise SystemExit(1)
+    else:
+        print("  ⚠️  SIN DATABASE_URL configurada — usando una base SQLite LOCAL,")
+        print("     separada de Neon/Railway. Los datos NO se van a compartir.")
+    print("=" * 60)
+
     for b in BOTS:
         print(f"   http://localhost:{port}{b['url']}  -> {b['nombre']}")
     print("=" * 60 + "\n")

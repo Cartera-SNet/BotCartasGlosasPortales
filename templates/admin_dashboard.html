@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Panel de administrador — Activa IT</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-body: #f4f6fb; --bg-card: #ffffff; --accent: #4f46e5; --accent-hover: #4338ca; --accent-light: #eef2ff;
+    --text-primary: #0f172a; --text-secondary: #64748b; --border: #e5e9f2;
+    --success: #10b981; --success-light: #ecfdf5; --danger: #ef4444; --danger-light: #fef2f2;
+    --warn: #f59e0b; --warn-light: #fffbeb; --blue: #3b82f6; --blue-light: #eff6ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: var(--bg-body); color: var(--text-primary); }
+  header {
+    background: var(--bg-card); padding: 14px 28px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-badge { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #6d28d9); display: flex; align-items: center; justify-content: center; color: #fff; font-size: .95rem; }
+  .brand h1 { font-size: .95rem; margin: 0; font-weight: 800; }
+  .brand .sub { font-size: .68rem; color: var(--text-secondary); }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .status-live { display: flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--text-secondary); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px var(--success-light); }
+  .user-chip { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 600; padding: 6px 12px; background: var(--bg-body); border-radius: 999px; }
+  .user-chip i { color: var(--accent); }
+  #btnLogout { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 7px 13px; font-size: .78rem; cursor: pointer; color: var(--text-secondary); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  #btnLogout:hover { border-color: var(--danger); color: var(--danger); }
+
+  main { max-width: 1180px; margin: 26px auto; padding: 0 20px 60px; }
+
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 26px; }
+  .summary-card { background: var(--bg-card); border-radius: 14px; padding: 16px 18px; border: 1px solid var(--border); display: flex; align-items: center; gap: 13px; }
+  .summary-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+  .summary-num { font-size: 1.35rem; font-weight: 800; line-height: 1; }
+  .summary-label { font-size: .7rem; color: var(--text-secondary); font-weight: 600; margin-top: 3px; }
+  @media (max-width: 760px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+
+  section { margin-bottom: 26px; }
+  .section-title { font-size: .85rem; font-weight: 800; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+  .section-title i { color: var(--accent); font-size: .8rem; }
+
+  .job-card { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border); padding: 16px 18px; margin-bottom: 12px; }
+  .job-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .job-ident { display: flex; align-items: center; gap: 11px; }
+  .job-logo { width: 34px; height: 34px; border-radius: 9px; object-fit: contain; background: var(--bg-body); padding: 4px; }
+  .job-bot { font-size: .87rem; font-weight: 800; }
+  .job-persona { font-size: .72rem; color: var(--text-secondary); }
+  .pill { font-size: .68rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; display: flex; align-items: center; gap: 5px; }
+  .pill-run { background: var(--success-light); color: var(--success); }
+  .pill-warn { background: var(--warn-light); color: #92400e; }
+  .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .progress-row { display: flex; justify-content: space-between; align-items: baseline; font-size: .76rem; margin-bottom: 6px; }
+  .progress-row strong { font-size: .82rem; }
+  .bar-track { height: 8px; border-radius: 999px; background: var(--bg-body); overflow: hidden; margin-bottom: 12px; }
+  .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #7c3aed); transition: width .4s; }
+  .job-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .job-meta-left { display: flex; gap: 16px; font-size: .74rem; color: var(--text-secondary); }
+  .job-meta-left span { display: flex; align-items: center; gap: 5px; }
+  .job-meta-left i { font-size: .7rem; }
+  .job-meta-left .err { color: var(--danger); font-weight: 700; }
+  .btn-stop { background: var(--danger-light); color: var(--danger); border: none; border-radius: 8px; padding: 7px 14px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+  .btn-stop:hover { background: var(--danger); color: #fff; }
+
+  .list-card { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .list-row { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #f1f5f9; font-size: .8rem; }
+  .list-row:last-child { border-bottom: none; }
+  .list-logo { width: 26px; height: 26px; border-radius: 7px; object-fit: contain; background: var(--bg-body); padding: 3px; flex-shrink: 0; }
+  .list-main { flex: 1; min-width: 0; }
+  .list-title { font-weight: 700; font-size: .8rem; }
+  .list-sub { font-size: .7rem; color: var(--text-secondary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-badge { font-size: .68rem; font-weight: 700; color: var(--warn); background: var(--warn-light); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .icon-btn { border: none; border-radius: 7px; width: 30px; height: 30px; cursor: pointer; font-size: .75rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .icon-btn.danger { background: var(--danger-light); color: var(--danger); }
+  .icon-btn.danger:hover { background: var(--danger); color: #fff; }
+  .icon-btn.blue { background: var(--blue-light); color: var(--blue); }
+  .icon-btn.blue:hover { background: var(--blue); color: #fff; }
+
+  .empty-state { text-align: center; padding: 34px 20px; color: var(--text-secondary); }
+  .empty-state i { font-size: 1.6rem; color: var(--border); margin-bottom: 10px; display: block; }
+  .empty-state strong { display: block; font-size: .85rem; color: var(--text-primary); margin-bottom: 3px; }
+  .empty-state span { font-size: .75rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="brand-badge"><i class="fas fa-shield-halved"></i></div>
+    <div><h1>Panel de administrador</h1><div class="sub">Activa IT · Panel Bot Glosas</div></div>
+  </div>
+  <div class="header-right">
+    <div class="status-live"><span class="status-dot"></span><span id="refreshNote">actualizando...</span></div>
+    <div class="user-chip"><i class="fas fa-user-shield"></i> Administrador</div>
+    <button id="btnLogout"><i class="fas fa-right-from-bracket"></i> Salir</button>
+  </div>
+</header>
+<main>
+
+  <div class="summary">
+    <div class="summary-card">
+      <div class="summary-icon" style="background:var(--accent-light); color:var(--accent);"><i class="fas fa-bolt"></i></div>
+      <div><div class="summary-num" id="sumActivos">0</div><div class="summary-label">Procesos activos</div></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-icon" style="background:var(--danger-light); color:var(--danger);"><i class="fas fa-triangle-exclamation"></i></div>
+      <div><div class="summary-num" id="sumErrores">0</div><div class="summary-label">Errores acumulados</div></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-icon" style="background:var(--warn-light); color:#92400e;"><i class="fas fa-clock-rotate-left"></i></div>
+      <div><div class="summary-num" id="sumProgresos">0</div><div class="summary-label">Progresos abandonados</div></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-icon" style="background:var(--blue-light); color:var(--blue);"><i class="fas fa-file-zipper"></i></div>
+      <div><div class="summary-num" id="sumArchivos">0</div><div class="summary-label">ZIP generados</div></div>
+    </div>
+  </div>
+
+  <section>
+    <h2 class="section-title"><i class="fas fa-gauge-high"></i> Procesos activos</h2>
+    <div id="jobsContainer"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><i class="fas fa-hourglass-half"></i> Procesos abandonados</h2>
+    <div class="list-card" id="progresosContainer"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><i class="fas fa-box-archive"></i> Archivos ZIP generados</h2>
+    <div class="list-card" id="archivosContainer"></div>
+  </section>
+
+</main>
+<script>
+document.getElementById("btnLogout").onclick = async () => {
+  await fetch("/admin/logout", { method: "POST" });
+  location.reload();
+};
+
+function vacio(icono, titulo, sub) {
+  return `<div class="empty-state"><i class="fas ${icono}"></i><strong>${titulo}</strong><span>${sub}</span></div>`;
+}
+
+async function cargarJobs() {
+  const r = await fetch("/admin/api/jobs");
+  const data = await r.json();
+  const cont = document.getElementById("jobsContainer");
+  document.getElementById("sumActivos").textContent = data.jobs.length;
+  document.getElementById("sumErrores").textContent = data.jobs.reduce((a, j) => a + (j.stats.errores || 0), 0);
+
+  if (!data.jobs.length) {
+    cont.innerHTML = vacio("fa-circle-check", "No hay procesos corriendo", "Todo tranquilo por ahora — los procesos activos aparecerán aquí en tiempo real.");
+    return;
+  }
+  cont.innerHTML = data.jobs.map(j => {
+    const stats = j.stats || {};
+    const total = stats.total || 0, desc = stats.descargadas || 0, err = stats.errores || 0;
+    const pillClass = j.atascado ? "pill-warn" : "pill-run";
+    const pillTexto = j.atascado ? "Posible atasco" : "Procesando";
+    return `
+    <div class="job-card">
+      <div class="job-top">
+        <div class="job-ident">
+          <img class="job-logo" src="/static/${j.logo}" alt="">
+          <div><div class="job-bot">${j.bot_nombre.toUpperCase()}</div><div class="job-persona">${j.identidad || "Identidad no registrada"}</div></div>
+        </div>
+        <span class="pill ${pillClass}"><span class="pill-dot"></span>${pillTexto}</span>
+      </div>
+      <div class="progress-row"><span><strong>${desc}</strong> / ${total || "?"} facturas</span><span>${j.porcentaje ?? 0}%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${j.porcentaje ?? 0}%"></div></div>
+      <div class="job-meta">
+        <div class="job-meta-left">
+          <span><i class="fas fa-stopwatch"></i> ${j.minutos_corriendo ?? "?"} min</span>
+          <span class="${err ? "err" : ""}"><i class="fas fa-circle-exclamation"></i> ${err} errores</span>
+        </div>
+        <button class="btn-stop" data-stop="${j.bot}|${j.clave_job}"><i class="fas fa-stop"></i> Detener</button>
+      </div>
+    </div>`;
+  }).join("");
+  cont.querySelectorAll("[data-stop]").forEach(btn => btn.onclick = async () => {
+    const [bot, clave_job] = btn.dataset.stop.split("|");
+    if (!confirm("¿Detener este proceso?")) return;
+    await fetch("/admin/api/stop", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ bot, clave_job }) });
+    cargarJobs();
+  });
+  document.getElementById("refreshNote").textContent = "actualizado " + new Date().toLocaleTimeString();
+}
+
+async function cargarProgresos() {
+  const r = await fetch("/admin/api/progresos");
+  const data = await r.json();
+  const cont = document.getElementById("progresosContainer");
+  document.getElementById("sumProgresos").textContent = data.progresos.length;
+  if (!data.progresos.length) {
+    cont.innerHTML = vacio("fa-broom", "No hay progresos abandonados", "Los procesos incompletos que lleven tiempo sin actividad aparecerán aquí.");
+    return;
+  }
+  cont.innerHTML = data.progresos.map(p => `
+    <div class="list-row">
+      <img class="list-logo" src="/static/${p.logo}" alt="">
+      <div class="list-main"><div class="list-title">${p.bot_nombre}</div><div class="list-sub">${p.carpeta}</div></div>
+      <span class="list-badge">${p.edad_horas} h sin actividad</span>
+      <button class="icon-btn danger" title="Borrar progreso" data-del="${p.ruta}"><i class="fas fa-trash"></i></button>
+    </div>`).join("");
+  cont.querySelectorAll("[data-del]").forEach(btn => btn.onclick = async () => {
+    if (!confirm("¿Borrar este progreso? No se puede deshacer.")) return;
+    await fetch("/admin/api/borrar-progreso", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ ruta: btn.dataset.del }) });
+    cargarProgresos();
+  });
+}
+
+async function cargarArchivos() {
+  const r = await fetch("/admin/api/archivos");
+  const data = await r.json();
+  const cont = document.getElementById("archivosContainer");
+  document.getElementById("sumArchivos").textContent = data.archivos.length;
+  if (!data.archivos.length) {
+    cont.innerHTML = vacio("fa-folder-open", "No hay archivos ZIP generados", "Los soportes descargados por los 4 bots aparecerán aquí para gestionarlos.");
+    return;
+  }
+  cont.innerHTML = data.archivos.map(a => `
+    <div class="list-row">
+      <img class="list-logo" src="/static/${a.logo}" alt="">
+      <div class="list-main"><div class="list-title">${a.nombre}</div><div class="list-sub">${a.bot_nombre} · ${a.kb} KB</div></div>
+      <button class="icon-btn blue" title="Descargar" data-dl="${a.ruta}"><i class="fas fa-download"></i></button>
+      <button class="icon-btn danger" title="Borrar" data-delz="${a.ruta}"><i class="fas fa-trash"></i></button>
+    </div>`).join("");
+  cont.querySelectorAll("[data-dl]").forEach(btn => btn.onclick = () => {
+    window.open("/admin/api/descargar?ruta=" + encodeURIComponent(btn.dataset.dl), "_blank");
+  });
+  cont.querySelectorAll("[data-delz]").forEach(btn => btn.onclick = async () => {
+    if (!confirm("¿Borrar este archivo? No se puede deshacer.")) return;
+    await fetch("/admin/api/borrar-archivo", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ ruta: btn.dataset.delz }) });
+    cargarArchivos();
+  });
+}
+
+function cargarTodo() { cargarJobs(); cargarProgresos(); cargarArchivos(); }
+cargarTodo();
+setInterval(() => { if (!document.hidden) cargarTodo(); }, 8000);
+</script>
+</body>
+</html>
