@@ -58,6 +58,33 @@ def _bots_disponibles():
     }
 
 
+def _carpetas_escaneo(bot_id, info):
+    """
+    Las carpetas REALES y EXCLUSIVAS de cada bot para escanear
+    progreso.json / *.zip. OJO: el DOWNLOAD_DIR de estado_sura es la
+    carpeta 'downloads/' raíz (la comparte con los otros 3 bots, porque
+    adentro tiene sus propias subcarpetas 'estado/' y 'sura/') -- si se
+    escaneara ese DOWNLOAD_DIR completo, aparecería duplicado TODO lo de
+    los otros bots también bajo "Estado/Sura". Por eso aquí se usan sus
+    2 subcarpetas reales en vez del DOWNLOAD_DIR crudo.
+    """
+    modulo = info["modulo"]
+    base = getattr(modulo, "DOWNLOAD_DIR", None)
+    if not base:
+        return []
+    if info["multi_empresa"]:
+        return [Path(base) / "estado", Path(base) / "sura"]
+    return [Path(base)]
+
+
+def _todas_las_carpetas_validas():
+    """Lista plana de todas las carpetas exclusivas de los 4 bots, para validar rutas."""
+    carpetas = []
+    for bot_id, info in _bots_disponibles().items():
+        carpetas.extend(_carpetas_escaneo(bot_id, info))
+    return [str(c) for c in carpetas]
+
+
 @bp.route("/admin")
 def admin_home():
     if not session.get("admin_ok"):
@@ -151,20 +178,19 @@ def admin_progresos():
     resultado = []
     ahora = time.time()
     for bot_id, info in _bots_disponibles().items():
-        modulo = info["modulo"]
-        base = getattr(modulo, "DOWNLOAD_DIR", None)
-        if not base or not Path(base).exists():
-            continue
-        for p in Path(base).rglob("progreso.json"):
-            try:
-                edad_horas = round((ahora - p.stat().st_mtime) / 3600, 1)
-                resultado.append({
-                    "bot": bot_id, "bot_nombre": info["nombre"], "logo": info["logo"],
-                    "ruta": str(p), "carpeta": str(p.parent.relative_to(base)),
-                    "edad_horas": edad_horas,
-                })
-            except Exception:
+        for base in _carpetas_escaneo(bot_id, info):
+            if not base.exists():
                 continue
+            for p in base.rglob("progreso.json"):
+                try:
+                    edad_horas = round((ahora - p.stat().st_mtime) / 3600, 1)
+                    resultado.append({
+                        "bot": bot_id, "bot_nombre": info["nombre"], "logo": info["logo"],
+                        "ruta": str(p), "carpeta": str(p.parent.relative_to(base)),
+                        "edad_horas": edad_horas,
+                    })
+                except Exception:
+                    continue
     resultado.sort(key=lambda r: -r["edad_horas"])
     return jsonify({"ok": True, "progresos": resultado})
 
@@ -177,8 +203,7 @@ def admin_borrar_progreso():
     if not ruta or "progreso.json" not in ruta:
         return jsonify({"ok": False, "error": "Ruta inválida"}), 400
     p = Path(ruta)
-    bots = _bots_disponibles()
-    bases_validas = [str(getattr(b["modulo"], "DOWNLOAD_DIR", "")) for b in bots.values()]
+    bases_validas = _todas_las_carpetas_validas()
     if not _ruta_bajo_base(ruta, bases_validas):
         return jsonify({"ok": False, "error": "Ruta fuera de las carpetas de descarga permitidas"}), 400
     try:
@@ -195,20 +220,19 @@ def admin_archivos():
     """Todos los ZIP generados, en las 4 carpetas de descarga."""
     resultado = []
     for bot_id, info in _bots_disponibles().items():
-        modulo = info["modulo"]
-        base = getattr(modulo, "DOWNLOAD_DIR", None)
-        if not base or not Path(base).exists():
-            continue
-        for p in Path(base).rglob("*.zip"):
-            try:
-                resultado.append({
-                    "bot": bot_id, "bot_nombre": info["nombre"], "logo": info["logo"],
-                    "ruta": str(p), "nombre": p.name,
-                    "kb": round(p.stat().st_size / 1024, 1),
-                    "modificado": p.stat().st_mtime,
-                })
-            except Exception:
+        for base in _carpetas_escaneo(bot_id, info):
+            if not base.exists():
                 continue
+            for p in base.rglob("*.zip"):
+                try:
+                    resultado.append({
+                        "bot": bot_id, "bot_nombre": info["nombre"], "logo": info["logo"],
+                        "ruta": str(p), "nombre": p.name,
+                        "kb": round(p.stat().st_size / 1024, 1),
+                        "modificado": p.stat().st_mtime,
+                    })
+                except Exception:
+                    continue
     resultado.sort(key=lambda r: -r["modificado"])
     return jsonify({"ok": True, "archivos": resultado})
 
@@ -220,8 +244,7 @@ def admin_descargar():
     ruta = request.args.get("ruta", "")
     if not ruta or not ruta.endswith(".zip"):
         return jsonify({"ok": False, "error": "Ruta inválida"}), 400
-    bots = _bots_disponibles()
-    bases_validas = [str(getattr(b["modulo"], "DOWNLOAD_DIR", "")) for b in bots.values()]
+    bases_validas = _todas_las_carpetas_validas()
     if not _ruta_bajo_base(ruta, bases_validas):
         return jsonify({"ok": False, "error": "Ruta fuera de las carpetas de descarga permitidas"}), 400
     p = Path(ruta)
@@ -238,8 +261,7 @@ def admin_borrar_archivo():
     if not ruta or not ruta.endswith(".zip"):
         return jsonify({"ok": False, "error": "Ruta inválida"}), 400
     p = Path(ruta)
-    bots = _bots_disponibles()
-    bases_validas = [str(getattr(b["modulo"], "DOWNLOAD_DIR", "")) for b in bots.values()]
+    bases_validas = _todas_las_carpetas_validas()
     if not _ruta_bajo_base(ruta, bases_validas):
         return jsonify({"ok": False, "error": "Ruta fuera de las carpetas de descarga permitidas"}), 400
     try:
