@@ -37,7 +37,7 @@
   .side-logos { display: flex; flex-wrap: wrap; gap: 10px; position: relative; }
   .side-logos img { width: 34px; height: 34px; object-fit: contain; background: #fff; border-radius: 9px; padding: 5px; }
   .brand { display: flex; align-items: center; gap: 10px; position: relative; }
-  .brand-badge { width: 38px; height: 38px; border-radius: 10px; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+  .brand-badge { width: 38px; height: 38px; border-radius: 10px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; padding: 6px; box-sizing: border-box; }
   .brand span { font-weight: 800; letter-spacing: .01em; }
 
   .panel { padding: 46px 40px; display: flex; flex-direction: column; justify-content: center; }
@@ -45,7 +45,8 @@
   .panel .subtitle { color: var(--text-secondary); font-size: .84rem; margin: 0 0 28px; display: flex; align-items: center; gap: 6px; }
   .panel .subtitle i { color: var(--accent); }
   label { font-size: .74rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; display: block; margin-bottom: 7px; }
-  .field { position: relative; margin-bottom: 18px; }
+  .field { margin-bottom: 18px; }
+  .input-wrap { position: relative; }
   .field i.icon-left { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: .85rem; z-index: 2; pointer-events: none; }
   .field input { position: relative; z-index: 1; }
   .field input {
@@ -76,17 +77,10 @@
 <body>
   <div class="wrap">
     <div class="side">
-      <div class="brand"><div class="brand-badge"><i class="fas fa-shield-halved"></i></div><span>Activa IT</span></div>
+      <div class="brand"><div class="brand-badge"><img src="/static/favicon.ico" alt="" style="width:22px;height:22px;object-fit:contain;"></div><span>Salud Net</span></div>
       <div>
         <h2>Panel de administrador</h2>
         <p>Supervisa en un solo lugar los procesos de descarga de cartas glosa de las 5 aseguradoras.</p>
-      </div>
-      <div class="side-logos">
-        <img src="/static/logo_bolivar.png" alt="Bolívar">
-        <img src="/static/logo_previsora.png" alt="Previsora">
-        <img src="/static/logo_mundial.png" alt="Mundial">
-        <img src="/static/logo_estado.png" alt="Estado">
-        <img src="/static/logo_sura.png" alt="Sura">
       </div>
     </div>
     <div class="panel">
@@ -95,14 +89,18 @@
       <form id="loginForm">
         <div class="field">
           <label for="usuario">Usuario</label>
-          <i class="fas fa-user icon-left"></i>
-          <input type="text" id="usuario" autocomplete="username" required>
+          <div class="input-wrap">
+            <i class="fas fa-user icon-left"></i>
+            <input type="text" id="usuario" autocomplete="username" required>
+          </div>
         </div>
         <div class="field">
           <label for="password">Contraseña</label>
-          <i class="fas fa-key icon-left"></i>
-          <input type="password" id="password" autocomplete="current-password" required>
-          <button type="button" class="toggle-pass" id="togglePass"><i class="fas fa-eye"></i></button>
+          <div class="input-wrap">
+            <i class="fas fa-key icon-left"></i>
+            <input type="password" id="password" autocomplete="current-password" required>
+            <button type="button" class="toggle-pass" id="togglePass"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
         <button type="submit" class="submit" id="btnSubmit">
           <span class="spinner" id="spinner"></span>

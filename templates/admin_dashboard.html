@@ -22,7 +22,7 @@
     border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
   }
   .brand { display: flex; align-items: center; gap: 11px; }
-  .brand-badge { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #6d28d9); display: flex; align-items: center; justify-content: center; color: #fff; font-size: .95rem; }
+  .brand-badge { width: 36px; height: 36px; border-radius: 10px; background: #fff; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: .95rem; padding: 6px; box-sizing: border-box; }
   .brand h1 { font-size: .95rem; margin: 0; font-weight: 800; }
   .brand .sub { font-size: .68rem; color: var(--text-secondary); }
   .header-right { display: flex; align-items: center; gap: 14px; }
@@ -91,8 +91,8 @@
 <body>
 <header>
   <div class="brand">
-    <div class="brand-badge"><i class="fas fa-shield-halved"></i></div>
-    <div><h1>Panel de administrador</h1><div class="sub">Activa IT · Panel Bot Glosas</div></div>
+    <div class="brand-badge"><img src="/static/favicon.ico" alt="" style="width:20px;height:20px;object-fit:contain;"></div>
+    <div><h1>Panel de administrador</h1><div class="sub">Panel Bot Glosas</div></div>
   </div>
   <div class="header-right">
     <div class="status-live"><span class="status-dot"></span><span id="refreshNote">actualizando...</span></div>
